@@ -59,7 +59,7 @@ chmod +x setup.sh
 
 ## 获取 API ID
 
-您的 Claude API ID 可以从 Claude API 后台获取。如果您不确定如何获取，请联系 Claude 支持团队。
+您的 Claude API ID 可以从 Claude API 后台获取。输入你的key点击查询后,浏览器的链接就会变成http://124.14.22.95:3002/admin-next/api-stats?apiId=你的paiid
 
 ## 手动安装（不推荐）
 
