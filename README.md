@@ -57,9 +57,73 @@ chmod +x setup.sh
 - Claude Code
 - 依赖包：`requests`、`urllib3`（安装脚本会自动安装）
 
-## 获取 API ID
+## 配置说明
 
-您的 Claude API ID 可以从 Claude API 后台获取。输入你的key点击查询后,浏览器的链接就会变成http://124.14.22.95:3002/admin-next/api-stats?apiId=你的paiid
+本项目支持两种 Claude API 付费方式，请根据您的情况选择对应的版本：
+
+### 方式一：按月付费（推荐大多数用户）
+
+**获取 API ID：**
+
+您的 Claude API ID 可以从 Claude API 后台获取。输入你的key点击查询后,浏览器的链接就会变成 `http://124.14.22.95:3002/admin-next/api-stats?apiId=你的api-id`
+
+**配置方法：**
+
+编辑 `status-final.py`（或 `~/.claude/status-final.py`），修改配置：
+
+```python
+CLAUDE_API_ID = "你的API_ID"
+```
+
+### 方式二：按量付费（SuperXiaoAi 用户）
+
+如果您使用的是 SuperXiaoAi 的按量付费服务，需要使用 `status-final-按量付费.py` 文件。
+
+**获取 SESSION_COOKIE 和 NEW_API_USER_ID：**
+
+1. **打开 SuperXiaoAi 网站**
+   - 在浏览器中访问：https://superxiaoai.com
+   - 登录你的账号
+
+2. **打开开发者工具**
+   - 按键盘 `F12` 键
+   - 或者右键点击页面 → 选择"检查"
+
+3. **切换到 Network 标签**
+   - 在开发者工具顶部找到 **Network**（网络）标签
+   - 点击它
+
+4. **刷新页面**
+   - 按 `F5` 刷新页面
+   - 或者访问你的用户中心页面
+
+5. **找到 API 请求**
+   - 在 Network 列表中找到 `user/self` 或 `api/user/self` 这个请求
+   - 点击这个请求
+
+6. **获取 NEW_API_USER_ID**
+   - 在右侧找到 **Headers**（请求头）部分
+   - 往下滚动找到 **Request Headers**
+   - 找到 `new-api-user: 319` 这一行（数字会不同）
+   - 这个数字就是你的 **NEW_API_USER_ID**
+
+7. **获取 SESSION_COOKIE**
+   - 在同一个请求的 Headers 中
+   - 找到 **Cookie** 那一行
+   - 找到 `session=MTc1O...` 这样的内容
+   - 复制 `session=` 后面的整个长字符串（非常长，确保全部复制）
+   - 这就是你的 **SESSION_COOKIE**
+
+**配置方法：**
+
+编辑 `status-final-按量付费.py`（或 `~/.claude/status-final-按量付费.py`），修改配置：
+
+```python
+SESSION_COOKIE = "你的SESSION_COOKIE"
+NEW_API_USER_ID = "你的USER_ID"
+```
+
+**⚠️ 安全提醒：** 这两个值相当于你的登录凭证，请妥善保管，不要分享给他人！
 
 ## 手动安装（不推荐）
 
