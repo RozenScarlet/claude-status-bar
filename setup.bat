@@ -30,15 +30,26 @@ if errorlevel 1 (
 )
 echo.
 
-REM Get API ID
-echo [3/5] Configure API ID...
-set /p API_ID="Please enter your Claude API ID: "
-if "!API_ID!"=="" (
-    echo [ERROR] API ID cannot be empty
+REM Get API credentials
+echo [3/5] Configure API credentials...
+echo.
+echo Please enter your SuperXiaoAi credentials:
+echo (See README.md for how to get these values)
+echo.
+set /p SESSION_COOKIE="SESSION_COOKIE: "
+if "!SESSION_COOKIE!"=="" (
+    echo [ERROR] SESSION_COOKIE cannot be empty
     pause
     exit /b 1
 )
-echo [OK] API ID: !API_ID!
+echo.
+set /p NEW_API_USER_ID="NEW_API_USER_ID: "
+if "!NEW_API_USER_ID!"=="" (
+    echo [ERROR] NEW_API_USER_ID cannot be empty
+    pause
+    exit /b 1
+)
+echo [OK] Credentials configured
 echo.
 
 REM Locate .claude folder
@@ -78,31 +89,35 @@ if errorlevel 1 (
 echo [OK] Files copied
 echo.
 
-REM Replace API ID - create temp Python script
-echo [*] Configuring API ID...
+REM Replace credentials - create temp Python script
+echo [*] Configuring credentials...
 set STATUS_PY=!CLAUDE_DIR!\status-final.py
 
 echo import sys > temp_replace.py
 echo import re >> temp_replace.py
 echo file_path = sys.argv[1] >> temp_replace.py
-echo api_id = sys.argv[2] >> temp_replace.py
+echo session_cookie = sys.argv[2] >> temp_replace.py
+echo user_id = sys.argv[3] >> temp_replace.py
 echo with open(file_path, 'r', encoding='utf-8'^) as f: >> temp_replace.py
 echo     content = f.read(^) >> temp_replace.py
-echo pattern = r'CLAUDE_API_ID\s*=\s*[\"'"'"'].*?[\"'"'"']' >> temp_replace.py
-echo replacement = 'CLAUDE_API_ID = "' + api_id + '"' >> temp_replace.py
-echo content = re.sub(pattern, replacement, content^) >> temp_replace.py
+echo pattern1 = r'SESSION_COOKIE\s*=\s*[\"'"'"'].*?[\"'"'"']' >> temp_replace.py
+echo replacement1 = 'SESSION_COOKIE = "' + session_cookie + '"' >> temp_replace.py
+echo content = re.sub(pattern1, replacement1, content^) >> temp_replace.py
+echo pattern2 = r'NEW_API_USER_ID\s*=\s*[\"'"'"'].*?[\"'"'"']' >> temp_replace.py
+echo replacement2 = 'NEW_API_USER_ID = "' + user_id + '"' >> temp_replace.py
+echo content = re.sub(pattern2, replacement2, content^) >> temp_replace.py
 echo with open(file_path, 'w', encoding='utf-8'^) as f: >> temp_replace.py
 echo     f.write(content^) >> temp_replace.py
 
-python temp_replace.py "!STATUS_PY!" "!API_ID!"
+python temp_replace.py "!STATUS_PY!" "!SESSION_COOKIE!" "!NEW_API_USER_ID!"
 if errorlevel 1 (
-    echo [ERROR] Failed to configure API ID
+    echo [ERROR] Failed to configure credentials
     del temp_replace.py
     pause
     exit /b 1
 )
 del temp_replace.py
-echo [OK] API ID configured
+echo [OK] Credentials configured
 echo.
 
 REM Update settings.json - create temp Python script
@@ -149,7 +164,8 @@ echo   Setup Complete!
 echo ========================================
 echo.
 echo Configuration:
-echo   - API ID: !API_ID!
+echo   - SESSION_COOKIE: ******
+echo   - NEW_API_USER_ID: !NEW_API_USER_ID!
 echo   - Status script: !CLAUDE_DIR!\status-final.py
 echo   - Launch script: !CLAUDE_DIR!\run-status.bat
 echo   - Settings file: !SETTINGS_FILE!
