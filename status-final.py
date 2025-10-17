@@ -1,7 +1,11 @@
 # ================================
-# 配置区域 - 请修改下面的API ID为你自己的
+# 配置区域 - 请修改下面的配置为你自己的
 # ================================
 CLAUDE_API_ID = "your-api-id-here"
+
+# SuperXiaoAi 账号配置
+SUPERXIAOAI_USERNAME = "your-username"
+SUPERXIAOAI_PASSWORD = "your-password"
 
 import json
 import os
@@ -99,11 +103,64 @@ def safe_execute(default_return=None):
     return decorator
 
 @safe_execute(None)
+def login_superxiaoai():
+    """登录SuperXiaoAi获取session cookie"""
+    try:
+        response = requests.post(
+            'https://superxiaoai.com/api/user/login',
+            headers={
+                'accept': 'application/json, text/plain, */*',
+                'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'content-type': 'application/json',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            json={
+                'username': SUPERXIAOAI_USERNAME,
+                'password': SUPERXIAOAI_PASSWORD
+            },
+            timeout=3
+        )
+
+        if response.status_code == 200 and 'session' in response.cookies:
+            cookie = response.cookies['session']
+            # 缓存cookie到文件
+            cache_file = os.path.expanduser('~/.claude/.superxiaoai_cookie')
+            try:
+                with open(cache_file, 'w') as f:
+                    f.write(cookie)
+            except:
+                pass
+            return cookie
+    except:
+        pass
+    return None
+
+@safe_execute(None)
+def get_cached_cookie():
+    """获取缓存的cookie"""
+    cache_file = os.path.expanduser('~/.claude/.superxiaoai_cookie')
+    try:
+        if os.path.exists(cache_file):
+            # 检查缓存文件是否在24小时内
+            if time.time() - os.path.getmtime(cache_file) < 86400:
+                with open(cache_file, 'r') as f:
+                    return f.read().strip()
+    except:
+        pass
+    return None
+
+@safe_execute(None)
 def get_claude_api_stats():
     """获取Claude API统计信息"""
     try:
-        # SuperXiaoAi 新API
-        session_cookie = "your-session-cookie-here"
+        # 先尝试使用缓存的cookie
+        session_cookie = get_cached_cookie()
+
+        # 如果没有缓存或缓存过期，重新登录
+        if not session_cookie:
+            session_cookie = login_superxiaoai()
+            if not session_cookie:
+                return None
 
         response = requests.get(
             'https://superxiaoai.com/api/user/self',
@@ -136,15 +193,58 @@ def get_claude_api_stats():
                     'dailyCost': 0,  # API未提供当日费用
                     'dailyLimit': 0
                 }
+
+        # 如果cookie失效(401或其他错误)，删除缓存并重试一次
+        if response.status_code == 401 or response.status_code != 200:
+            cache_file = os.path.expanduser('~/.claude/.superxiaoai_cookie')
+            try:
+                if os.path.exists(cache_file):
+                    os.remove(cache_file)
+            except:
+                pass
+
+            # 重新登录再试一次
+            session_cookie = login_superxiaoai()
+            if session_cookie:
+                response = requests.get(
+                    'https://superxiaoai.com/api/user/self',
+                    headers={
+                        'accept': 'application/json, text/plain, */*',
+                        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                        'cache-control': 'no-store',
+                        'new-api-user': '319',
+                        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    },
+                    cookies={'session': session_cookie},
+                    timeout=3
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('success'):
+                        user_data = data['data']
+                        quota = user_data.get('quota', 0)
+                        used_quota = user_data.get('used_quota', 0)
+
+                        RATE = 2.0 / 1000000
+                        total_limit = (quota + used_quota) * RATE
+                        current_cost = used_quota * RATE
+
+                        return {
+                            'totalCost': current_cost,
+                            'totalLimit': total_limit,
+                            'dailyCost': 0,
+                            'dailyLimit': 0
+                        }
     except:
         pass
     return None
 
-@safe_execute("💰$0.00/$100")
+@safe_execute("获取失败")
 def format_total_cost_display(api_data):
     """格式化总费用显示"""
     if not api_data:
-        return colorize("💰", Colors.GREEN) + colorize("$0.00", Colors.GREEN) + colorize("/", Colors.BRIGHT_CYAN) + colorize("$100", Colors.CYAN)
+        return colorize("获取失败", Colors.RED)
 
     current_cost = api_data.get('totalCost', 0)
     total_limit = api_data.get('totalLimit', 100)
@@ -179,9 +279,12 @@ def format_total_cost_display(api_data):
     else:
         bar_color = Colors.GREEN
 
-    progress_bar = colorize("[", Colors.BRIGHT_WHITE) + colorize(bar, bar_color) + colorize("]", Colors.BRIGHT_WHITE)
+    progress_bar = colorize(bar, bar_color)
 
-    return colorize(icon, cost_color) + cost_part + separator + limit_part + " " + progress_bar
+    # 百分比显示
+    percentage = colorize(f" {usage_ratio * 100:.2f}%", bar_color)
+
+    return colorize(icon, cost_color) + cost_part + separator + limit_part + " " + progress_bar + percentage
 
 @safe_execute('🤖unknown')
 def get_model_info():
@@ -805,7 +908,7 @@ def main():
     except Exception:
         # 美化的错误回退显示
         fallback_parts = [
-            colorize("💰", Colors.YELLOW) + colorize("$0.00", Colors.GREEN) + colorize("/", Colors.BRIGHT_CYAN) + colorize("$100", Colors.CYAN) + " " + colorize("📅", Colors.BRIGHT_BLUE) + colorize("$0.00", Colors.BRIGHT_GREEN, bold=True),
+            colorize("获取失败", Colors.RED) + " " + colorize("📅", Colors.BRIGHT_BLUE) + colorize("$0.00", Colors.BRIGHT_GREEN, bold=True),
             colorize("🤖", Colors.BLUE) + colorize("unknown", Colors.WHITE),
             colorize("📂", Colors.DIM) + colorize("no-git", Colors.DIM),
             colorize("🧠", Colors.GREEN) + colorize("0k", Colors.GREEN) + colorize("/", Colors.BRIGHT_CYAN) + colorize("200k", Colors.CYAN) + colorize("(0%)", Colors.GREEN),
