@@ -187,7 +187,53 @@ chmod +x ~/.claude/run-status.sh
 
 ### Q: API 统计信息不显示？
 
-请确认您的 API ID 配置正确，并且 API 服务器可访问。
+请确认您的账号信息配置正确，并且 API 服务器可访问。
+
+### Q: 配置后很长时间没有生成 .super_yi_token 文件？
+
+如果配置完成后状态栏无法显示 API 信息，可能是登录失败导致 Token 无法获取。请按以下步骤排查：
+
+**1. 运行诊断工具**
+
+```bash
+# 进入仓库目录
+cd ~/claude-status-bar
+
+# 运行诊断脚本
+python test-login.py
+```
+
+诊断工具会自动检查：
+- ✅ 网络连接是否正常
+- ✅ 配置文件是否正确
+- ✅ 登录是否成功
+- ✅ Token 是否正确保存
+
+**2. 常见问题和解决方案**
+
+| 问题 | 可能原因 | 解决方案 |
+|------|---------|---------|
+| 配置文件包含默认值 | 未修改占位符 | 编辑 `~/.claude/status-final.py`，填入真实账号 |
+| 账号或密码错误 | 配置信息有误 | 在浏览器中验证账号，确认可以登录 |
+| 网络连接失败 | 防火墙/代理问题 | 检查网络设置，确保可以访问 super-yi.com |
+| API 接口变更 | 服务端更新 | 在 GitHub 提 Issue，我们会及时更新 |
+
+**3. 手动测试登录**
+
+如果诊断工具无法解决问题，可以手动测试：
+
+```python
+# 手动测试脚本
+python -c "
+import requests
+response = requests.post('https://super-yi.com/auth/login',
+    json={'email': 'your-email@example.com', 'password': 'your-password'})
+print(response.status_code)
+print(response.json())
+"
+```
+
+将 `your-email@example.com` 和 `your-password` 替换为你的真实账号信息。
 
 ### Q: 如何卸载？
 
