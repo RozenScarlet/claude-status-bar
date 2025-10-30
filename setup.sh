@@ -66,14 +66,21 @@ else
 fi
 echo
 
-# 询问用户输入 API ID
-echo -e "${BLUE}[3/5] 配置 API ID...${NC}"
-read -p "请输入您的 Claude API ID: " API_ID
-if [ -z "$API_ID" ]; then
-    echo -e "${RED}[错误] API ID 不能为空${NC}"
+# 询问用户输入账号信息
+echo -e "${BLUE}[3/5] 配置 Super-Yi 账号...${NC}"
+echo "请输入您的 Super-Yi 账号信息:"
+read -p "Email: " EMAIL
+if [ -z "$EMAIL" ]; then
+    echo -e "${RED}[错误] Email 不能为空${NC}"
     exit 1
 fi
-echo -e "${GREEN}[√] API ID: $API_ID${NC}"
+read -sp "Password: " PASSWORD
+echo
+if [ -z "$PASSWORD" ]; then
+    echo -e "${RED}[错误] Password 不能为空${NC}"
+    exit 1
+fi
+echo -e "${GREEN}[√] 账号配置完成${NC}"
 echo
 
 # 定位 .claude 文件夹
@@ -117,8 +124,8 @@ EOFSCRIPT
 chmod +x "$CLAUDE_DIR/run-status.sh"
 echo -e "${GREEN}[√] 文件复制完成${NC}"
 
-# 替换 status-final.py 中的 API ID
-echo -e "${BLUE}[*] 配置 API ID...${NC}"
+# 替换 status-final.py 中的账号信息
+echo -e "${BLUE}[*] 配置账号信息...${NC}"
 STATUS_PY="$CLAUDE_DIR/status-final.py"
 
 $PYTHON_CMD << EOF
@@ -126,7 +133,8 @@ import re
 try:
     with open(r'$STATUS_PY', 'r', encoding='utf-8') as f:
         content = f.read()
-    content = re.sub(r'CLAUDE_API_ID\s*=\s*[\'"].*?[\'"]', 'CLAUDE_API_ID = "$API_ID"', content)
+    content = re.sub(r'SUPER_YI_EMAIL\s*=\s*[\'"].*?[\'"]', 'SUPER_YI_EMAIL = "$EMAIL"', content)
+    content = re.sub(r'SUPER_YI_PASSWORD\s*=\s*[\'"].*?[\'"]', 'SUPER_YI_PASSWORD = "$PASSWORD"', content)
     with open(r'$STATUS_PY', 'w', encoding='utf-8') as f:
         f.write(content)
     print("SUCCESS")
@@ -136,10 +144,10 @@ except Exception as e:
 EOF
 
 if [ $? -ne 0 ]; then
-    echo -e "${RED}[错误] 配置 API ID 失败${NC}"
+    echo -e "${RED}[错误] 配置账号信息失败${NC}"
     exit 1
 fi
-echo -e "${GREEN}[√] API ID 配置完成${NC}"
+echo -e "${GREEN}[√] 账号信息配置完成${NC}"
 
 # 更新 settings.json
 echo -e "${BLUE}[*] 更新 Claude Code 配置...${NC}"
@@ -201,7 +209,8 @@ echo -e "${GREEN}  配置完成！${NC}"
 echo "========================================"
 echo
 echo "配置详情:"
-echo "  - API ID: $API_ID"
+echo "  - Email: $EMAIL"
+echo "  - Password: ******"
 echo "  - 状态栏脚本: $CLAUDE_DIR/status-final.py"
 echo "  - 启动脚本: $RUN_SCRIPT"
 echo "  - 配置文件: $SETTINGS_FILE"
