@@ -59,46 +59,32 @@ chmod +x setup.sh
 
 ## 配置说明
 
+本项目支持 **Super-Yi API**，使用自动登录获取 Token，无需手动配置复杂的 Cookie 信息！
 
+### 配置步骤
 
-**获取 SESSION_COOKIE 和 NEW_API_USER_ID：**
+编辑 `~/.claude/status-final.py`，修改顶部的配置信息：
 
-1. **打开 SuperXiaoAi 网站**
-   - 在浏览器中访问：https://superxiaoai.com
-   - 登录你的账号
+```python
+# Super-Yi 账号配置
+SUPER_YI_EMAIL = "your-email@example.com"
+SUPER_YI_PASSWORD = "your-password"
+```
 
-2. **打开开发者工具**
-   - 按键盘 `F12` 键
-   - 或者右键点击页面 → 选择"检查"
+将 `your-email@example.com` 和 `your-password` 替换为你的 Super-Yi 账号和密码。
 
-3. **切换到 Network 标签**
-   - 在开发者工具顶部找到 **Network**（网络）标签
-   - 点击它
-<img width="1169" height="1206" alt="image" src="https://github.com/user-attachments/assets/f98220f6-9a21-49ce-b6ab-e31c384af6a4" />
+### 工作原理
 
-4. **刷新页面**
-   - 按 `F5` 刷新页面
-   - 或者访问你的用户中心页面
+脚本会自动：
+1. ✅ 使用账号密码登录 Super-Yi API
+2. ✅ 获取 Bearer Token 并缓存到本地（`~/.claude/.super_yi_token`）
+3. ✅ Token 缓存 20 小时，过期自动刷新
+4. ✅ 失败自动重试，无需人工干预
 
-5. **找到 API 请求**
-   - 第一个self请求
-   - 点击这个请求,并点击标头
-<img width="2559" height="1345" alt="image" src="https://github.com/user-attachments/assets/01fd064a-3b3f-4eee-bd46-c6c610aa6bce" />
-
-
-6. **获取 SESSION_COOKIE**
-   - 在同一个请求的 Headers 中
-   - 找到 **Cookie** 那一行
-   - 找到 `session=MTc1O...` 这样的内容
-   - 复制 `session=` 后面的整个长字符串（非常长，确保全部复制）
-   - 这就是你的 **SESSION_COOKIE**
-<img width="2312" height="1323" alt="image" src="https://github.com/user-attachments/assets/6d8363d2-16e4-4c1a-a658-bdc40bdc1862" />
-下面就是 NEW_API_USER_ID
-
-
-
-
-**⚠️ 安全提醒：** 这两个值相当于你的登录凭证，请妥善保管，不要分享给他人！
+**⚠️ 安全提醒：**
+- 配置文件包含您的登录凭证，请妥善保管
+- 不要将包含真实账号密码的配置文件上传到公开仓库
+- Token 缓存在本地，仅供当前用户访问
 
 ## 手动安装（不推荐）
 
@@ -118,12 +104,14 @@ cp status-final.py ~/.claude/
 cp run-status.bat ~/.claude/
 ```
 
-### 2. 配置 API ID
+### 2. 配置账号信息
 
-编辑 `~/.claude/status-final.py`，修改第一行的 API ID：
+编辑 `~/.claude/status-final.py`，修改顶部的配置：
 
 ```python
-CLAUDE_API_ID = "你的API_ID"
+# Super-Yi 账号配置
+SUPER_YI_EMAIL = "your-email@example.com"
+SUPER_YI_PASSWORD = "your-password"
 ```
 
 ### 3. 安装依赖

@@ -1,11 +1,9 @@
 # ================================
 # 配置区域 - 请修改下面的配置为你自己的
 # ================================
-CLAUDE_API_ID = "your-api-id-here"
-
-# SuperXiaoAi 账号配置
-SUPERXIAOAI_USERNAME = "your-username"
-SUPERXIAOAI_PASSWORD = "your-password"
+# Super-Yi 账号配置
+SUPER_YI_EMAIL = "your-email@example.com"
+SUPER_YI_PASSWORD = "your-password"
 
 import json
 import os
@@ -102,12 +100,13 @@ def safe_execute(default_return=None):
         return wrapper
     return decorator
 
+
 @safe_execute(None)
-def login_superxiaoai():
-    """登录SuperXiaoAi获取session cookie"""
+def login_super_yi():
+    """登录 Super-Yi 获取 Bearer Token"""
     try:
         response = requests.post(
-            'https://superxiaoai.com/api/user/login',
+            'https://super-yi.com/auth/login',
             headers={
                 'accept': 'application/json, text/plain, */*',
                 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
@@ -115,34 +114,36 @@ def login_superxiaoai():
                 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
             json={
-                'username': SUPERXIAOAI_USERNAME,
-                'password': SUPERXIAOAI_PASSWORD
+                'email': SUPER_YI_EMAIL,
+                'password': SUPER_YI_PASSWORD
             },
             timeout=3
         )
 
-        if response.status_code == 200 and 'session' in response.cookies:
-            cookie = response.cookies['session']
-            # 缓存cookie到文件
-            cache_file = os.path.expanduser('~/.claude/.superxiaoai_cookie')
-            try:
-                with open(cache_file, 'w') as f:
-                    f.write(cookie)
-            except:
-                pass
-            return cookie
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success') and data.get('token'):
+                token = data['token']
+                # 缓存 token 到文件
+                cache_file = os.path.expanduser('~/.claude/.super_yi_token')
+                try:
+                    with open(cache_file, 'w') as f:
+                        f.write(token)
+                except:
+                    pass
+                return token
     except:
         pass
     return None
 
 @safe_execute(None)
-def get_cached_cookie():
-    """获取缓存的cookie"""
-    cache_file = os.path.expanduser('~/.claude/.superxiaoai_cookie')
+def get_cached_token():
+    """获取缓存的 token"""
+    cache_file = os.path.expanduser('~/.claude/.super_yi_token')
     try:
         if os.path.exists(cache_file):
-            # 检查缓存文件是否在24小时内
-            if time.time() - os.path.getmtime(cache_file) < 86400:
+            # 检查缓存文件是否在20小时内（JWT token 24小时过期，提前一点刷新）
+            if time.time() - os.path.getmtime(cache_file) < 72000:  # 20小时
                 with open(cache_file, 'r') as f:
                     return f.read().strip()
     except:
@@ -153,39 +154,46 @@ def get_cached_cookie():
 def get_claude_api_stats():
     """获取Claude API统计信息"""
     try:
-        # 先尝试使用缓存的cookie
-        session_cookie = get_cached_cookie()
+        # 先尝试使用缓存的 token
+        bearer_token = get_cached_token()
 
         # 如果没有缓存或缓存过期，重新登录
-        if not session_cookie:
-            session_cookie = login_superxiaoai()
-            if not session_cookie:
+        if not bearer_token:
+            bearer_token = login_super_yi()
+            if not bearer_token:
                 return None
 
         response = requests.get(
-            'https://superxiaoai.com/api/user/self',
+            'https://super-yi.com/user-api/profile',
             headers={
                 'accept': 'application/json, text/plain, */*',
                 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'cache-control': 'no-store',
-                'new-api-user': '319',
+                'authorization': f'Bearer {bearer_token}',
+                'sec-ch-ua': '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
                 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
-            cookies={'session': session_cookie},
             timeout=3
         )
 
         if response.status_code == 200:
             data = response.json()
             if data.get('success'):
-                user_data = data['data']
-                quota = user_data.get('quota', 0)
-                used_quota = user_data.get('used_quota', 0)
+                user_data = data.get('user', {})
 
-                # 转换配额为美元 (每百万配额 ≈ $2)
-                RATE = 2.0 / 1000000
-                total_limit = (quota + used_quota) * RATE
-                current_cost = used_quota * RATE
+                # balanceCents: 剩余余额（美分）
+                # totalCostCents: 已使用金额（美分）
+                balance_cents = user_data.get('balanceCents', 0)
+                total_cost_cents = user_data.get('usage', {}).get('totalCostCents', 0)
+
+                # 转换为美元
+                balance = balance_cents / 100.0
+                current_cost = total_cost_cents / 100.0
+                total_limit = balance + current_cost
 
                 return {
                     'totalCost': current_cost,
@@ -194,9 +202,9 @@ def get_claude_api_stats():
                     'dailyLimit': 0
                 }
 
-        # 如果cookie失效(401或其他错误)，删除缓存并重试一次
+        # 如果 token 失效(401或其他错误)，删除缓存并重试一次
         if response.status_code == 401 or response.status_code != 200:
-            cache_file = os.path.expanduser('~/.claude/.superxiaoai_cookie')
+            cache_file = os.path.expanduser('~/.claude/.super_yi_token')
             try:
                 if os.path.exists(cache_file):
                     os.remove(cache_file)
@@ -204,31 +212,35 @@ def get_claude_api_stats():
                 pass
 
             # 重新登录再试一次
-            session_cookie = login_superxiaoai()
-            if session_cookie:
+            bearer_token = login_super_yi()
+            if bearer_token:
                 response = requests.get(
-                    'https://superxiaoai.com/api/user/self',
+                    'https://super-yi.com/user-api/profile',
                     headers={
                         'accept': 'application/json, text/plain, */*',
                         'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                        'cache-control': 'no-store',
-                        'new-api-user': '319',
+                        'authorization': f'Bearer {bearer_token}',
+                        'sec-ch-ua': '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+                        'sec-ch-ua-mobile': '?0',
+                        'sec-ch-ua-platform': '"Windows"',
+                        'sec-fetch-dest': 'empty',
+                        'sec-fetch-mode': 'cors',
+                        'sec-fetch-site': 'same-origin',
                         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                     },
-                    cookies={'session': session_cookie},
                     timeout=3
                 )
 
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('success'):
-                        user_data = data['data']
-                        quota = user_data.get('quota', 0)
-                        used_quota = user_data.get('used_quota', 0)
+                        user_data = data.get('user', {})
+                        balance_cents = user_data.get('balanceCents', 0)
+                        total_cost_cents = user_data.get('usage', {}).get('totalCostCents', 0)
 
-                        RATE = 2.0 / 1000000
-                        total_limit = (quota + used_quota) * RATE
-                        current_cost = used_quota * RATE
+                        balance = balance_cents / 100.0
+                        current_cost = total_cost_cents / 100.0
+                        total_limit = balance + current_cost
 
                         return {
                             'totalCost': current_cost,
@@ -266,23 +278,58 @@ def format_total_cost_display(api_data):
     separator = colorize("/", Colors.BRIGHT_CYAN)
     limit_part = colorize(f"${total_limit:.2f}", Colors.CYAN)
 
-    # 生成进度条 - 单独设置进度条颜色
-    bar_length = 10  # 进度条总长度
-    filled_length = int(bar_length * usage_ratio)
-    bar = '█' * filled_length + '░' * (bar_length - filled_length)
+    # 生成进度条 - 每格5%，内部6个状态（绿→黄→红，░→█）
+    bar_length = 20  # 进度条显示长度（20格，每格5%）
+    precise_ratio = usage_ratio * bar_length  # 精确的格数（0-20之间的小数）
 
-    # 进度条颜色规则：0-40%绿色，40-80%黄色，80%以上红色
+    full_blocks = int(precise_ratio)  # 完整的格数
+    partial = precise_ratio - full_blocks  # 小数部分（0-1）
+
+    # 计算当前格内的百分比（0-5%）
+    partial_percent = partial * 5
+
+    # 根据格内进度确定字符和颜色
+    if partial_percent < 1:  # 0-1%
+        partial_char = '░'
+        partial_color = Colors.GREEN
+    elif partial_percent < 2:  # 1-2%
+        partial_char = '█'
+        partial_color = Colors.GREEN
+    elif partial_percent < 3:  # 2-3%
+        partial_char = '░'
+        partial_color = Colors.YELLOW
+    elif partial_percent < 4:  # 3-4%
+        partial_char = '█'
+        partial_color = Colors.YELLOW
+    elif partial_percent < 5:  # 4-5%
+        partial_char = '░'
+        partial_color = Colors.RED
+    else:  # 接近5%（会进位到下一格）
+        partial_char = '█'
+        partial_color = Colors.RED
+
+    # 构建进度条：完整块（红色█） + 当前格 + 空白格（绿色░）
+    filled_bar = '█' * full_blocks
+    partial_bar = partial_char if partial > 0 else ''
+    empty_length = bar_length - full_blocks - (1 if partial_bar else 0)
+    empty_bar_chars = '░' * empty_length
+
+    # 组装进度条
+    progress_bar = (
+        colorize(filled_bar, Colors.RED) +
+        colorize(partial_bar, partial_color) +
+        colorize(empty_bar_chars, Colors.GREEN)
+    )
+
+    # 百分比显示 - 根据使用率决定颜色
     if usage_ratio >= 0.8:
-        bar_color = Colors.RED
+        perc_color = Colors.RED
     elif usage_ratio >= 0.4:
-        bar_color = Colors.YELLOW
+        perc_color = Colors.YELLOW
     else:
-        bar_color = Colors.GREEN
+        perc_color = Colors.WHITE
 
-    progress_bar = colorize(bar, bar_color)
-
-    # 百分比显示
-    percentage = colorize(f" {usage_ratio * 100:.2f}%", bar_color)
+    percentage = colorize(f" {usage_ratio * 100:.2f}%", perc_color)
 
     return colorize(icon, cost_color) + cost_part + separator + limit_part + " " + progress_bar + percentage
 
