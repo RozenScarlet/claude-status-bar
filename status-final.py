@@ -897,20 +897,21 @@ def get_account_pool_summary():
 
 @safe_execute("🔋N/A")
 def format_account_pool_display(pool_data):
-    """格式化账号池状态显示 - 分段进度条版（仅3种核心状态）"""
+    """格式化账号池状态显示 - 分段进度条版（包含4种状态）"""
     if not pool_data:
         return colorize("🔋", Colors.BRIGHT_BLUE) + colorize("N/A", Colors.DIM)
 
-    # 提取3种核心状态的账号数量
+    # 提取4种状态的账号数量
     total = pool_data.get('total', 0)
     normal = pool_data.get('normal', 0)          # 正常可用
     rate_limited = pool_data.get('rateLimited', 0)  # 速率限制
     blocked = pool_data.get('blocked', 0)        # 已阻止
+    inactive = pool_data.get('inactive', 0)      # 不活跃
 
     if total == 0:
         return colorize("🔋", Colors.BRIGHT_BLUE) + colorize("0", Colors.DIM)
 
-    # 构建分段进度条 - 只显示3种核心状态
+    # 构建分段进度条 - 显示4种状态
     bar_parts = []
 
     # 正常账号 - 绿色█
@@ -921,15 +922,21 @@ def format_account_pool_display(pool_data):
     for _ in range(rate_limited):
         bar_parts.append(colorize("█", Colors.BRIGHT_YELLOW))
 
+    # 不活跃账号 - 黄色█（和限速相同颜色）
+    for _ in range(inactive):
+        bar_parts.append(colorize("█", Colors.BRIGHT_YELLOW))
+
     # 已阻止账号 - 红色█
     for _ in range(blocked):
         bar_parts.append(colorize("█", Colors.BRIGHT_RED))
 
-    # 组装显示：🔢总数[进度条]
+    # 组装显示：🔋正常数/总数[进度条]
     progress_bar = "".join(bar_parts)
 
     return (
         colorize("🔋", Colors.BRIGHT_BLUE) +
+        colorize(str(normal), Colors.BRIGHT_GREEN, bold=True) +
+        colorize("/", Colors.BRIGHT_CYAN) +
         colorize(str(total), Colors.WHITE, bold=True) +
         colorize("[", Colors.BRIGHT_CYAN) +
         progress_bar +
