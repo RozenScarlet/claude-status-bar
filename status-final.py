@@ -823,90 +823,118 @@ def get_project_time():
     
     return "0h"
 
-@safe_execute("$0.00")
-def get_daily_cost():
-    """获取今日费用 - 基于本地项目文件计算"""
-    current_dir_path = os.getcwd()
-    current_dir_name = os.path.basename(current_dir_path) or 'unknown'
+@safe_execute(None)
+def get_account_pool_summary():
+    """获取账号池汇总信息"""
+    try:
+        # 先尝试使用缓存的 token
+        bearer_token = get_cached_token()
 
-    # Windows路径转换
-    if current_dir_path.startswith('/c/'):
-        windows_path = 'C:' + current_dir_path[2:].replace('/', '\\')
-    elif current_dir_path.startswith('/d/'):
-        windows_path = 'D:' + current_dir_path[2:].replace('/', '\\')
-    elif current_dir_path.startswith('C:') or current_dir_path.startswith('D:'):
-        windows_path = current_dir_path
-    else:
-        windows_path = current_dir_path
+        # 如果没有缓存或缓存过期，重新登录
+        if not bearer_token:
+            bearer_token = login_super_yi()
+            if not bearer_token:
+                return None
 
-    claude_folder_name = windows_path.replace(':', '--').replace('\\', '-')
-    claude_folder_name_alt = claude_folder_name.replace('_', '-')
+        response = requests.get(
+            'https://super-yi.com/user-api/account-pool/summary?model=claude-sonnet-4-5-20250929',
+            headers={
+                'accept': 'application/json, text/plain, */*',
+                'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'authorization': f'Bearer {bearer_token}',
+                'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            timeout=3
+        )
 
-    project_dir_patterns = [
-        claude_folder_name,
-        claude_folder_name_alt,
-        current_dir_name,
-        current_dir_name.replace('_', '-'),
-        current_dir_name.replace('-', '_')
-    ]
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success'):
+                return data.get('summary', {}).get('overall', {})
 
-    projects_dir = os.path.expanduser('~/.claude/projects')
-    if not os.path.exists(projects_dir):
-        return "$0.00"
+        # 如果 token 失效，删除缓存并重试一次
+        if response.status_code == 401:
+            cache_file = os.path.expanduser('~/.claude/.super_yi_token')
+            try:
+                if os.path.exists(cache_file):
+                    os.remove(cache_file)
+            except:
+                pass
 
-    daily_cost = 0
-    today = datetime.now().date()
+            # 重新登录再试一次
+            bearer_token = login_super_yi()
+            if bearer_token:
+                response = requests.get(
+                    'https://super-yi.com/user-api/account-pool/summary?model=claude-sonnet-4-5-20250929',
+                    headers={
+                        'accept': 'application/json, text/plain, */*',
+                        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                        'authorization': f'Bearer {bearer_token}',
+                        'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+                        'sec-ch-ua-mobile': '?0',
+                        'sec-ch-ua-platform': '"Windows"',
+                        'sec-fetch-dest': 'empty',
+                        'sec-fetch-mode': 'cors',
+                        'sec-fetch-site': 'same-origin',
+                        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    },
+                    timeout=3
+                )
 
-    # 在projects目录中查找匹配当前目录的文件夹
-    for folder_name in os.listdir(projects_dir):
-        folder_path = os.path.join(projects_dir, folder_name)
-        if not os.path.isdir(folder_path):
-            continue
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('success'):
+                        return data.get('summary', {}).get('overall', {})
+    except:
+        pass
+    return None
 
-        is_current_project = False
-        for pattern in project_dir_patterns:
-            if pattern in folder_name:
-                is_current_project = True
-                break
+@safe_execute("🔋N/A")
+def format_account_pool_display(pool_data):
+    """格式化账号池状态显示 - 分段进度条版（仅3种核心状态）"""
+    if not pool_data:
+        return colorize("🔋", Colors.BRIGHT_BLUE) + colorize("N/A", Colors.DIM)
 
-        if is_current_project:
-            for file_name in os.listdir(folder_path):
-                if file_name.endswith('.jsonl'):
-                    file_path = os.path.join(folder_path, file_name)
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            lines = f.readlines()
+    # 提取3种核心状态的账号数量
+    total = pool_data.get('total', 0)
+    normal = pool_data.get('normal', 0)          # 正常可用
+    rate_limited = pool_data.get('rateLimited', 0)  # 速率限制
+    blocked = pool_data.get('blocked', 0)        # 已阻止
 
-                        for line in lines:
-                            data = json.loads(line.strip())
-                            # 检查是否是今天的记录
-                            timestamp_str = data.get('timestamp')
-                            if timestamp_str:
-                                try:
-                                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                                    if timestamp.date() != today:
-                                        continue
-                                except:
-                                    continue
+    if total == 0:
+        return colorize("🔋", Colors.BRIGHT_BLUE) + colorize("0", Colors.DIM)
 
-                            if data.get('type') == 'assistant' and data.get('message', {}).get('usage'):
-                                usage = data['message']['usage']
-                                input_tokens = usage.get('input_tokens', 0)
-                                output_tokens = usage.get('output_tokens', 0)
-                                cache_read_tokens = usage.get('cache_read_input_tokens', 0)
-                                cache_create_tokens = usage.get('cache_create_input_tokens', 0)
+    # 构建分段进度条 - 只显示3种核心状态
+    bar_parts = []
 
-                                cost = (
-                                    input_tokens * 3.0 / 1000000 +
-                                    output_tokens * 15.0 / 1000000 +
-                                    cache_read_tokens * 0.3 / 1000000 +
-                                    cache_create_tokens * 3.75 / 1000000
-                                )
-                                daily_cost += cost
-                    except:
-                        continue
+    # 正常账号 - 绿色█
+    for _ in range(normal):
+        bar_parts.append(colorize("█", Colors.BRIGHT_GREEN))
 
-    return f"${daily_cost:.2f}"
+    # 速率限制账号 - 黄色█
+    for _ in range(rate_limited):
+        bar_parts.append(colorize("█", Colors.BRIGHT_YELLOW))
+
+    # 已阻止账号 - 红色█
+    for _ in range(blocked):
+        bar_parts.append(colorize("█", Colors.BRIGHT_RED))
+
+    # 组装显示：🔢总数[进度条]
+    progress_bar = "".join(bar_parts)
+
+    return (
+        colorize("🔋", Colors.BRIGHT_BLUE) +
+        colorize(str(total), Colors.WHITE, bold=True) +
+        colorize("[", Colors.BRIGHT_CYAN) +
+        progress_bar +
+        colorize("]", Colors.BRIGHT_CYAN)
+    )
 
 @safe_execute("00:00")
 def get_current_time():
@@ -928,12 +956,12 @@ def main():
         project_tokens = get_project_token_info()
         project_cost = get_project_cost()
         project_time = get_project_time()
-        
-        # 今日费用
-        daily_cost = get_daily_cost()
 
-        # 账户余额 + 今日费用组合
-        account_info = format_total_cost_display(api_data) + " " + colorize("📅", Colors.BRIGHT_BLUE) + colorize(daily_cost, Colors.BRIGHT_GREEN, bold=True)
+        # 账号池信息
+        pool_data = get_account_pool_summary()
+
+        # 账户余额 + 账号池状态组合（添加分隔符）
+        account_info = format_total_cost_display(api_data) + " " + colorize("┃", Colors.BRIGHT_CYAN) + " " + format_account_pool_display(pool_data)
 
         # 当前时间
         current_time = get_current_time()
@@ -955,7 +983,7 @@ def main():
     except Exception:
         # 美化的错误回退显示
         fallback_parts = [
-            colorize("获取失败", Colors.RED) + " " + colorize("📅", Colors.BRIGHT_BLUE) + colorize("$0.00", Colors.BRIGHT_GREEN, bold=True),
+            colorize("获取失败", Colors.RED) + " " + colorize("┃", Colors.BRIGHT_CYAN) + " " + colorize("🔋", Colors.BRIGHT_BLUE) + colorize("N/A", Colors.DIM),
             colorize("🤖", Colors.BLUE) + colorize("unknown", Colors.WHITE),
             colorize("📂", Colors.DIM) + colorize("no-git", Colors.DIM),
             colorize("🧠", Colors.GREEN) + colorize("0k", Colors.GREEN) + colorize("/", Colors.BRIGHT_CYAN) + colorize("200k", Colors.CYAN) + colorize("(0%)", Colors.GREEN),
