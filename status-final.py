@@ -1090,20 +1090,35 @@ def get_session_message_count():
     if not target_folder or not os.path.isdir(target_folder):
         return colorize("💬", Colors.BRIGHT_CYAN) + colorize("0", Colors.WHITE)
 
-    # 在项目文件夹中找最新的 jsonl 文件（排除 agent- 开头的文件）
-    latest_file = None
-    latest_time = 0
+    # 在项目文件夹中找最新的对话文件
+    # 排除: agent- 开头的文件、只有 summary 的文件
+    candidate_files = []
 
     for file_name in os.listdir(target_folder):
         if file_name.endswith('.jsonl') and not file_name.startswith('agent-'):
             file_path = os.path.join(target_folder, file_name)
             mtime = os.path.getmtime(file_path)
-            if mtime > latest_time:
-                latest_time = mtime
-                latest_file = file_path
+            # 检查文件是否包含 user 消息（快速检查前几行）
+            has_user = False
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    for i, line in enumerate(f):
+                        if i > 20:  # 只检查前20行
+                            break
+                        if '"type":"user"' in line or '"type": "user"' in line:
+                            has_user = True
+                            break
+            except:
+                pass
+            if has_user:
+                candidate_files.append((mtime, file_path))
 
-    if not latest_file:
+    if not candidate_files:
         return colorize("💬", Colors.BRIGHT_CYAN) + colorize("0", Colors.WHITE)
+
+    # 选择最新的对话文件
+    candidate_files.sort(reverse=True)
+    latest_file = candidate_files[0][1]
 
     # 统计该文件中所有 user 消息数量
     message_count = 0
