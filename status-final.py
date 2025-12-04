@@ -1057,62 +1057,65 @@ def get_current_time():
 @safe_execute("💬0")
 def get_session_message_count():
     """获取本次会话消息轮数"""
-    # 从 claude_input 获取会话ID
-    session_id = None
-    if claude_input and claude_input.get('session_id'):
-        session_id = claude_input['session_id']
+    # 定位当前项目的文件夹
+    current_dir_path = os.getcwd()
 
-    # 查找当前项目的 transcript 文件
-    possible_dirs = [
-        os.path.expanduser('~/.claude/projects'),
-        os.path.join(os.getcwd(), '.claude'),
-    ]
+    # 统一转换为 Claude 项目文件夹命名格式
+    # C:\Users\Administrator -> C--Users-Administrator
+    # /c/Users/Administrator -> C--Users-Administrator
+    if current_dir_path.startswith('/c/'):
+        # bash格式: /c/Users/Administrator
+        claude_folder_name = 'C--' + current_dir_path[3:].replace('/', '-')
+    elif current_dir_path.startswith('/d/'):
+        claude_folder_name = 'D--' + current_dir_path[3:].replace('/', '-')
+    elif len(current_dir_path) > 2 and current_dir_path[1] == ':':
+        # Windows格式: C:\Users\Administrator
+        drive = current_dir_path[0].upper()
+        path_part = current_dir_path[3:].replace('\\', '-').replace('/', '-')
+        claude_folder_name = f'{drive}--{path_part}'
+    else:
+        claude_folder_name = current_dir_path.replace('/', '-').replace('\\', '-')
 
+    projects_dir = os.path.expanduser('~/.claude/projects')
+    if not os.path.exists(projects_dir):
+        return colorize("💬", Colors.BRIGHT_CYAN) + colorize("0", Colors.WHITE)
+
+    # 找到当前项目对应的文件夹
+    target_folder = None
+    for folder_name in os.listdir(projects_dir):
+        if claude_folder_name in folder_name or folder_name in claude_folder_name:
+            target_folder = os.path.join(projects_dir, folder_name)
+            break
+
+    if not target_folder or not os.path.isdir(target_folder):
+        return colorize("💬", Colors.BRIGHT_CYAN) + colorize("0", Colors.WHITE)
+
+    # 在项目文件夹中找最新的 jsonl 文件（排除 agent- 开头的文件）
     latest_file = None
     latest_time = 0
 
-    for projects_dir in possible_dirs:
-        if not os.path.exists(projects_dir):
-            continue
-        for root, dirs, files in os.walk(projects_dir):
-            for file in files:
-                if file.endswith('.jsonl'):
-                    file_path = os.path.join(root, file)
-                    mtime = os.path.getmtime(file_path)
-                    if mtime > latest_time:
-                        latest_time = mtime
-                        latest_file = file_path
+    for file_name in os.listdir(target_folder):
+        if file_name.endswith('.jsonl') and not file_name.startswith('agent-'):
+            file_path = os.path.join(target_folder, file_name)
+            mtime = os.path.getmtime(file_path)
+            if mtime > latest_time:
+                latest_time = mtime
+                latest_file = file_path
 
     if not latest_file:
         return colorize("💬", Colors.BRIGHT_CYAN) + colorize("0", Colors.WHITE)
 
-    # 统计消息轮数（user消息数量 = 对话轮数）
+    # 统计该文件中所有 user 消息数量
     message_count = 0
-    current_session_id = None
-
     try:
         with open(latest_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        # 从后往前找到当前会话的消息
-        for line in reversed(lines):
-            try:
-                data = json.loads(line.strip())
-                msg_session_id = data.get('sessionId')
-
-                # 如果是第一条，记录会话ID
-                if current_session_id is None:
-                    current_session_id = msg_session_id
-
-                # 只统计当前会话的消息
-                if msg_session_id == current_session_id:
+            for line in f:
+                try:
+                    data = json.loads(line.strip())
                     if data.get('type') == 'user':
                         message_count += 1
-                else:
-                    # 遇到不同会话就停止
-                    break
-            except:
-                continue
+                except:
+                    continue
     except:
         pass
 
