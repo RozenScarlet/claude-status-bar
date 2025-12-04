@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 
 echo.
 echo ========================================
-echo   Claude Status Bar Setup Tool
+echo   Claude Status Bar Setup Tool v2.0
 echo ========================================
 echo.
 
@@ -30,26 +30,19 @@ if errorlevel 1 (
 )
 echo.
 
-REM Get API credentials
-echo [3/5] Configure API credentials...
+REM Get API Key
+echo [3/5] Configure Cubence API Key...
 echo.
-echo Please enter your Super-Yi account:
-echo (Your email and password for login)
+echo Please enter your Cubence API Key:
+echo (Get it from https://cubence.com)
 echo.
-set /p EMAIL="Email: "
-if "!EMAIL!"=="" (
-    echo [ERROR] Email cannot be empty
+set /p API_KEY="API Key: "
+if "!API_KEY!"=="" (
+    echo [ERROR] API Key cannot be empty
     pause
     exit /b 1
 )
-echo.
-set /p PASSWORD="Password: "
-if "!PASSWORD!"=="" (
-    echo [ERROR] Password cannot be empty
-    pause
-    exit /b 1
-)
-echo [OK] Credentials configured
+echo [OK] API Key configured
 echo.
 
 REM Locate .claude folder
@@ -89,35 +82,31 @@ if errorlevel 1 (
 echo [OK] Files copied
 echo.
 
-REM Replace credentials - create temp Python script
-echo [*] Configuring credentials...
+REM Replace API Key - create temp Python script
+echo [*] Configuring API Key...
 set STATUS_PY=!CLAUDE_DIR!\status-final.py
 
 echo import sys > temp_replace.py
 echo import re >> temp_replace.py
 echo file_path = sys.argv[1] >> temp_replace.py
-echo email = sys.argv[2] >> temp_replace.py
-echo password = sys.argv[3] >> temp_replace.py
+echo api_key = sys.argv[2] >> temp_replace.py
 echo with open(file_path, 'r', encoding='utf-8'^) as f: >> temp_replace.py
 echo     content = f.read(^) >> temp_replace.py
-echo pattern1 = r'SUPER_YI_EMAIL\s*=\s*[\"'"'"'].*?[\"'"'"']' >> temp_replace.py
-echo replacement1 = 'SUPER_YI_EMAIL = "' + email + '"' >> temp_replace.py
-echo content = re.sub(pattern1, replacement1, content^) >> temp_replace.py
-echo pattern2 = r'SUPER_YI_PASSWORD\s*=\s*[\"'"'"'].*?[\"'"'"']' >> temp_replace.py
-echo replacement2 = 'SUPER_YI_PASSWORD = "' + password + '"' >> temp_replace.py
-echo content = re.sub(pattern2, replacement2, content^) >> temp_replace.py
+echo pattern = r'CUBENCE_API_KEY\s*=\s*[\"'"'"'].*?[\"'"'"']' >> temp_replace.py
+echo replacement = 'CUBENCE_API_KEY = "' + api_key + '"' >> temp_replace.py
+echo content = re.sub(pattern, replacement, content^) >> temp_replace.py
 echo with open(file_path, 'w', encoding='utf-8'^) as f: >> temp_replace.py
 echo     f.write(content^) >> temp_replace.py
 
-python temp_replace.py "!STATUS_PY!" "!EMAIL!" "!PASSWORD!"
+python temp_replace.py "!STATUS_PY!" "!API_KEY!"
 if errorlevel 1 (
-    echo [ERROR] Failed to configure credentials
+    echo [ERROR] Failed to configure API Key
     del temp_replace.py
     pause
     exit /b 1
 )
 del temp_replace.py
-echo [OK] Credentials configured
+echo [OK] API Key configured
 echo.
 
 REM Update settings.json - create temp Python script
@@ -164,8 +153,7 @@ echo   Setup Complete!
 echo ========================================
 echo.
 echo Configuration:
-echo   - Email: !EMAIL!
-echo   - Password: ******
+echo   - API Key: !API_KEY:~0,20!...
 echo   - Status script: !CLAUDE_DIR!\status-final.py
 echo   - Launch script: !CLAUDE_DIR!\run-status.bat
 echo   - Settings file: !SETTINGS_FILE!

@@ -1,9 +1,8 @@
 # ================================
 # 配置区域 - 请修改下面的配置为你自己的
 # ================================
-# Super-Yi 账号配置
-SUPER_YI_EMAIL = "your-email@example.com"
-SUPER_YI_PASSWORD = "your-password"
+# Cubence API 配置（从 https://cubence.com 获取）
+CUBENCE_API_KEY = "sk-user-your-api-key-here"
 
 import json
 import os
@@ -36,7 +35,7 @@ class Colors:
     RESET = '\033[0m'
     BOLD = '\033[1m'
     DIM = '\033[2m'
-    
+
     # 前景色
     BLACK = '\033[30m'
     RED = '\033[31m'
@@ -46,7 +45,7 @@ class Colors:
     MAGENTA = '\033[35m'
     CYAN = '\033[36m'
     WHITE = '\033[37m'
-    
+
     # 亮色
     BRIGHT_BLACK = '\033[90m'
     BRIGHT_RED = '\033[91m'
@@ -56,7 +55,7 @@ class Colors:
     BRIGHT_MAGENTA = '\033[95m'
     BRIGHT_CYAN = '\033[96m'
     BRIGHT_WHITE = '\033[97m'
-    
+
     # 背景色
     BG_BLACK = '\033[40m'
     BG_RED = '\033[41m'
@@ -71,7 +70,7 @@ def colorize(text, color=None, bg_color=None, bold=False, dim=False):
     """给文本添加颜色"""
     if not color and not bg_color and not bold and not dim:
         return text
-    
+
     codes = []
     if bold:
         codes.append('1')
@@ -81,7 +80,7 @@ def colorize(text, color=None, bg_color=None, bold=False, dim=False):
         codes.append(color.replace('\033[', '').replace('m', ''))
     if bg_color:
         codes.append(bg_color.replace('\033[', '').replace('m', ''))
-    
+
     if codes:
         return f"\033[{';'.join(codes)}m{text}{Colors.RESET}"
     return text
@@ -102,236 +101,171 @@ def safe_execute(default_return=None):
 
 
 @safe_execute(None)
-def login_super_yi():
-    """登录 Super-Yi 获取 Bearer Token"""
-    try:
-        response = requests.post(
-            'https://super-yi.com/auth/login',
-            headers={
-                'accept': 'application/json, text/plain, */*',
-                'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'content-type': 'application/json',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            },
-            json={
-                'email': SUPER_YI_EMAIL,
-                'password': SUPER_YI_PASSWORD
-            },
-            timeout=3
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('success') and data.get('token'):
-                token = data['token']
-                # 缓存 token 到文件
-                cache_file = os.path.expanduser('~/.claude/.super_yi_token')
-                try:
-                    with open(cache_file, 'w') as f:
-                        f.write(token)
-                except:
-                    pass
-                return token
-    except:
-        pass
-    return None
-
-@safe_execute(None)
-def get_cached_token():
-    """获取缓存的 token"""
-    cache_file = os.path.expanduser('~/.claude/.super_yi_token')
-    try:
-        if os.path.exists(cache_file):
-            # 检查缓存文件是否在20小时内（JWT token 24小时过期，提前一点刷新）
-            if time.time() - os.path.getmtime(cache_file) < 72000:  # 20小时
-                with open(cache_file, 'r') as f:
-                    return f.read().strip()
-    except:
-        pass
-    return None
-
-@safe_execute(None)
 def get_claude_api_stats():
-    """获取Claude API统计信息"""
+    """获取Claude API统计信息 - 使用Cubence API"""
     try:
-        # 先尝试使用缓存的 token
-        bearer_token = get_cached_token()
-
-        # 如果没有缓存或缓存过期，重新登录
-        if not bearer_token:
-            bearer_token = login_super_yi()
-            if not bearer_token:
-                return None
-
         response = requests.get(
-            'https://super-yi.com/user-api/profile',
+            'https://cubence.com/api/v1/user/subscription-info',
             headers={
-                'accept': 'application/json, text/plain, */*',
-                'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'authorization': f'Bearer {bearer_token}',
-                'sec-ch-ua': '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"',
-                'sec-fetch-dest': 'empty',
-                'sec-fetch-mode': 'cors',
-                'sec-fetch-site': 'same-origin',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'Accept': '*/*',
+                'Authorization': CUBENCE_API_KEY,
+                'Content-Type': 'application/json'
             },
-            timeout=3
+            timeout=5
         )
 
         if response.status_code == 200:
-            data = response.json()
-            if data.get('success'):
-                user_data = data.get('user', {})
+            result = response.json()
 
-                # balanceCents: 剩余余额（美分）
-                # totalCostCents: 已使用金额（美分）
-                balance_cents = user_data.get('balanceCents', 0)
-                total_cost_cents = user_data.get('usage', {}).get('totalCostCents', 0)
+            # 解析API的数据结构
+            # 数据格式: {"normal_balance": {...}, "subscription_window": {"five_hour": {...}, "weekly": {...}}}
+            subscription = result.get('subscription_window', {})
+            five_hour = subscription.get('five_hour', {})
+            weekly = subscription.get('weekly', {})
 
-                # 转换为美元
-                balance = balance_cents / 100.0
-                current_cost = total_cost_cents / 100.0
-                total_limit = balance + current_cost
+            # 提取五小时窗口信息
+            five_hour_limit = five_hour.get('limit', 0)
+            five_hour_remaining = five_hour.get('remaining', 0)
+            five_hour_used = five_hour.get('used', 0)
+            five_hour_reset = five_hour.get('reset_at', 0)
 
-                return {
-                    'totalCost': current_cost,
-                    'totalLimit': total_limit,
-                    'dailyCost': 0,  # API未提供当日费用
-                    'dailyLimit': 0
+            # 提取周窗口信息
+            weekly_limit = weekly.get('limit', 0)
+            weekly_remaining = weekly.get('remaining', 0)
+            weekly_used = weekly.get('used', 0)
+            weekly_reset = weekly.get('reset_at', 0)
+
+            return {
+                'five_hour': {
+                    'limit': five_hour_limit,
+                    'remaining': five_hour_remaining,
+                    'used': five_hour_used,
+                    'reset_at': five_hour_reset
+                },
+                'weekly': {
+                    'limit': weekly_limit,
+                    'remaining': weekly_remaining,
+                    'used': weekly_used,
+                    'reset_at': weekly_reset
                 }
-
-        # 如果 token 失效(401或其他错误)，删除缓存并重试一次
-        if response.status_code == 401 or response.status_code != 200:
-            cache_file = os.path.expanduser('~/.claude/.super_yi_token')
-            try:
-                if os.path.exists(cache_file):
-                    os.remove(cache_file)
-            except:
-                pass
-
-            # 重新登录再试一次
-            bearer_token = login_super_yi()
-            if bearer_token:
-                response = requests.get(
-                    'https://super-yi.com/user-api/profile',
-                    headers={
-                        'accept': 'application/json, text/plain, */*',
-                        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                        'authorization': f'Bearer {bearer_token}',
-                        'sec-ch-ua': '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
-                        'sec-ch-ua-mobile': '?0',
-                        'sec-ch-ua-platform': '"Windows"',
-                        'sec-fetch-dest': 'empty',
-                        'sec-fetch-mode': 'cors',
-                        'sec-fetch-site': 'same-origin',
-                        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    },
-                    timeout=3
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('success'):
-                        user_data = data.get('user', {})
-                        balance_cents = user_data.get('balanceCents', 0)
-                        total_cost_cents = user_data.get('usage', {}).get('totalCostCents', 0)
-
-                        balance = balance_cents / 100.0
-                        current_cost = total_cost_cents / 100.0
-                        total_limit = balance + current_cost
-
-                        return {
-                            'totalCost': current_cost,
-                            'totalLimit': total_limit,
-                            'dailyCost': 0,
-                            'dailyLimit': 0
-                        }
+            }
     except:
         pass
     return None
 
 @safe_execute("获取失败")
 def format_total_cost_display(api_data):
-    """格式化总费用显示"""
+    """格式化订阅配额显示 - 适配Cubence API"""
     if not api_data:
         return colorize("获取失败", Colors.RED)
 
-    current_cost = api_data.get('totalCost', 0)
-    total_limit = api_data.get('totalLimit', 100)
+    five_hour = api_data.get('five_hour', {})
+    weekly = api_data.get('weekly', {})
 
-    # 根据使用比例决定颜色和图标
-    usage_ratio = current_cost / total_limit if total_limit > 0 else 0
+    # 五小时窗口数据
+    five_limit = five_hour.get('limit', 0)
+    five_remaining = five_hour.get('remaining', 0)
+    five_used = five_hour.get('used', 0)
+    five_reset = five_hour.get('reset_at', 0)
 
-    if usage_ratio >= 0.8:  # 80%以上
-        cost_color = Colors.RED
-        icon = "🚨"  # 警报：危险状态
-    elif usage_ratio >= 0.4:  # 40-80%
-        cost_color = Colors.YELLOW
-        icon = "💸"  # 钱飞走：警告状态
-    else:  # 0-40%
-        cost_color = Colors.GREEN
-        icon = "💰"  # 钱袋：安全状态
+    # 周窗口数据
+    week_limit = weekly.get('limit', 0)
+    week_remaining = weekly.get('remaining', 0)
+    week_used = weekly.get('used', 0)
+    week_reset = weekly.get('reset_at', 0)
 
-    cost_part = colorize(f"${current_cost:.2f}", cost_color)
-    separator = colorize("/", Colors.BRIGHT_CYAN)
-    limit_part = colorize(f"${total_limit:.2f}", Colors.CYAN)
+    # 计算重置时间
+    def format_reset_time(reset_timestamp):
+        if reset_timestamp <= 0:
+            return ""
+        now = time.time()
+        diff = reset_timestamp - now
+        if diff <= 0:
+            return "已重置"
+        days = int(diff // 86400)
+        hours = int((diff % 86400) // 3600)
+        minutes = int((diff % 3600) // 60)
+        if days > 0:
+            return f"{days}d{hours}h"
+        elif hours > 0:
+            return f"{hours}h{minutes}m"
+        else:
+            return f"{minutes}m"
 
-    # 生成进度条 - 每格5%，内部6个状态（绿→黄→红，░→█）
-    bar_length = 20  # 进度条显示长度（20格，每格5%）
-    precise_ratio = usage_ratio * bar_length  # 精确的格数（0-20之间的小数）
+    # 生成进度条函数
+    def make_progress_bar(usage_ratio, bar_length=10):
+        precise_ratio = usage_ratio * bar_length
+        full_blocks = int(precise_ratio)
+        partial = precise_ratio - full_blocks
 
-    full_blocks = int(precise_ratio)  # 完整的格数
-    partial = precise_ratio - full_blocks  # 小数部分（0-1）
+        # 根据使用率决定颜色
+        if usage_ratio >= 0.8:
+            fill_color = Colors.RED
+        elif usage_ratio >= 0.4:
+            fill_color = Colors.YELLOW
+        else:
+            fill_color = Colors.RED  # 已用部分用红色
 
-    # 计算当前格内的百分比（0-5%）
-    partial_percent = partial * 5
+        filled_bar = '█' * full_blocks
+        partial_bar = '░' if partial > 0.5 else ''
+        empty_length = bar_length - full_blocks - (1 if partial_bar else 0)
+        empty_bar = '░' * empty_length
 
-    # 根据格内进度确定字符和颜色
-    if partial_percent < 1:  # 0-1%
-        partial_char = '░'
-        partial_color = Colors.GREEN
-    elif partial_percent < 2:  # 1-2%
-        partial_char = '█'
-        partial_color = Colors.GREEN
-    elif partial_percent < 3:  # 2-3%
-        partial_char = '░'
-        partial_color = Colors.YELLOW
-    elif partial_percent < 4:  # 3-4%
-        partial_char = '█'
-        partial_color = Colors.YELLOW
-    elif partial_percent < 5:  # 4-5%
-        partial_char = '░'
-        partial_color = Colors.RED
-    else:  # 接近5%（会进位到下一格）
-        partial_char = '█'
-        partial_color = Colors.RED
+        return (
+            colorize(filled_bar, fill_color) +
+            colorize(partial_bar, Colors.YELLOW if partial > 0.5 else Colors.GREEN) +
+            colorize(empty_bar, Colors.GREEN)
+        )
 
-    # 构建进度条：完整块（红色█） + 当前格 + 空白格（绿色░）
-    filled_bar = '█' * full_blocks
-    partial_bar = partial_char if partial > 0 else ''
-    empty_length = bar_length - full_blocks - (1 if partial_bar else 0)
-    empty_bar_chars = '░' * empty_length
+    # === 五小时窗口 ===
+    five_usage_ratio = five_used / five_limit if five_limit > 0 else 0
+    five_reset_str = format_reset_time(five_reset)
 
-    # 组装进度条
-    progress_bar = (
-        colorize(filled_bar, Colors.RED) +
-        colorize(partial_bar, partial_color) +
-        colorize(empty_bar_chars, Colors.GREEN)
+    if five_usage_ratio >= 0.8:
+        five_icon = "🚨"
+        five_perc_color = Colors.RED
+    elif five_usage_ratio >= 0.4:
+        five_icon = "💸"
+        five_perc_color = Colors.YELLOW
+    else:
+        five_icon = "💰"
+        five_perc_color = Colors.WHITE
+
+    five_bar = make_progress_bar(five_usage_ratio, 10)
+    five_percentage = colorize(f"{five_usage_ratio * 100:.1f}%", five_perc_color)
+    five_reset_part = colorize("(", Colors.DIM) + colorize("↻", Colors.BRIGHT_YELLOW) + colorize(five_reset_str, Colors.YELLOW) + colorize(")", Colors.DIM) if five_reset_str else ""
+
+    five_part = (
+        colorize(five_icon, five_perc_color) +
+        colorize("5h:", Colors.BRIGHT_CYAN) +
+        five_bar +
+        five_percentage +
+        five_reset_part
     )
 
-    # 百分比显示 - 根据使用率决定颜色
-    if usage_ratio >= 0.8:
-        perc_color = Colors.RED
-    elif usage_ratio >= 0.4:
-        perc_color = Colors.YELLOW
+    # === 周窗口 ===
+    week_usage_ratio = week_used / week_limit if week_limit > 0 else 0
+    week_reset_str = format_reset_time(week_reset)
+
+    if week_usage_ratio >= 0.8:
+        week_perc_color = Colors.RED
+    elif week_usage_ratio >= 0.4:
+        week_perc_color = Colors.YELLOW
     else:
-        perc_color = Colors.WHITE
+        week_perc_color = Colors.WHITE
 
-    percentage = colorize(f" {usage_ratio * 100:.2f}%", perc_color)
+    week_bar = make_progress_bar(week_usage_ratio, 10)
+    week_percentage = colorize(f"{week_usage_ratio * 100:.1f}%", week_perc_color)
+    week_reset_part = colorize("(", Colors.DIM) + colorize("↻", Colors.BRIGHT_YELLOW) + colorize(week_reset_str, Colors.YELLOW) + colorize(")", Colors.DIM) if week_reset_str else ""
 
-    return colorize(icon, cost_color) + cost_part + separator + limit_part + " " + progress_bar + percentage
+    week_part = (
+        colorize("周:", Colors.BRIGHT_MAGENTA) +
+        week_bar +
+        week_percentage +
+        week_reset_part
+    )
+
+    return five_part + " " + week_part
 
 @safe_execute('🤖unknown')
 def get_model_info():
@@ -373,14 +307,14 @@ def get_git_info():
             ['git', 'branch', '--show-current'],
             stderr=subprocess.DEVNULL, timeout=2, encoding='utf-8'
         ).strip()
-        
+
         status_output = subprocess.check_output(
             ['git', 'status', '--porcelain'],
             stderr=subprocess.DEVNULL, timeout=2, encoding='utf-8'
         ).strip()
-        
+
         modified_count = len([line for line in status_output.split('\n') if line.strip()])
-        
+
         # Git图标和颜色
         if modified_count > 0:
             if modified_count > 10:
@@ -392,13 +326,13 @@ def get_git_info():
             else:
                 icon = "📝"
                 count_color = Colors.BRIGHT_YELLOW
-            
+
             branch_part = colorize(f"🌿{branch}", Colors.GREEN)
             count_part = colorize(f"({modified_count})", count_color, bold=True)
             return colorize(icon, Colors.YELLOW) + branch_part + count_part
         else:
             return colorize("🌿", Colors.GREEN) + colorize(branch, Colors.BRIGHT_GREEN, bold=True)
-            
+
     except:
         return colorize("📂", Colors.DIM) + colorize("no-git", Colors.DIM)
 
@@ -411,7 +345,7 @@ def get_project_info():
         project_dir = workspace.get('project_dir', '')
         if project_dir:
             return os.path.basename(project_dir) or 'unknown'
-    
+
     # 回退到当前目录
     return os.path.basename(os.getcwd()) or 'unknown'
 
@@ -423,39 +357,45 @@ def get_context_display():
         used_tokens = context_usage['used']
         total = format_tokens(context_usage['total'])
         percentage = context_usage['percentage']
-        
-        # 根据token绝对数量设置颜色和图标：0-100k绿色，100k-150k黄色，150k-200k红色
-        if used_tokens >= 150000:  # 150k以上
-            icon = "😵‍💫"  # 头晕：高负载状态
+
+        # 根据百分比设置颜色，更直观
+        if percentage >= 70:  # 70%以上（140k+）- 红色警告
+            icon = "🔥"  # 火焰：危险状态，建议清理上下文
             icon_color = Colors.RED
             used_color = Colors.RED
             perc_color = Colors.RED
-        elif used_tokens >= 100000:  # 100k-150k
-            icon = "🤔"  # 思考：中等负载状态
+        elif percentage >= 50:  # 50%-70%（100k-140k）- 黄色警告
+            icon = "⚠️ "  # 警告：中等负载，需要注意
             icon_color = Colors.YELLOW
             used_color = Colors.YELLOW
             perc_color = Colors.YELLOW
-        else:  # 0-100k
-            icon = "🧠"  # 大脑：正常状态
+        elif percentage >= 30:  # 30%-50%（60k-100k）- 蓝色正常
+            icon = "🧠"  # 大脑：正常工作状态
+            icon_color = Colors.BRIGHT_BLUE
+            used_color = Colors.BRIGHT_CYAN
+            perc_color = Colors.CYAN
+        else:  # 0-30%（0-60k）- 绿色轻松
+            icon = "🧠"  # 大脑：轻松状态
             icon_color = Colors.GREEN
             used_color = Colors.GREEN
             perc_color = Colors.GREEN
-        
+
         used = format_tokens(used_tokens)
-        
+
         icon_part = colorize(icon, icon_color)
         used_part = colorize(used, used_color, bold=True)
         separator = colorize("/", Colors.BRIGHT_CYAN)
         total_part = colorize(total, Colors.CYAN)
         perc_part = colorize(f"({percentage}%)", perc_color)
-        
+
         return icon_part + used_part + separator + total_part + perc_part
-    
-    return colorize("🧠", Colors.GREEN) + colorize("0k", Colors.GREEN) + colorize("/", Colors.BRIGHT_CYAN) + colorize("200k", Colors.CYAN) + colorize("(0%)", Colors.GREEN)
+
+    # 获取失败时显示"⚠️ERR"，区分"真的是0"和"获取失败"
+    return colorize("⚠️", Colors.YELLOW) + colorize("ERR", Colors.YELLOW) + colorize("/", Colors.BRIGHT_CYAN) + colorize("200k", Colors.CYAN) + colorize("(??%)", Colors.DIM)
 
 @safe_execute(None)
 def get_context_usage():
-    """获取当前会话的上下文使用量 - 改进版"""
+    """获取当前会话的上下文使用量"""
     # 方法1：优先从 Claude Code stdin 获取（最准确）
     if claude_input:
         # 检查是否有 context 信息
@@ -470,15 +410,17 @@ def get_context_usage():
                     'percentage': round((used / total) * 100)
                 }
 
-        # 检查是否有 usage 信息（有时在顶层）
+        # 增强 usage 信息提取，支持更多字段
         if claude_input.get('usage'):
             usage = claude_input['usage']
             input_tokens = usage.get('input_tokens', 0)
             cache_read = usage.get('cache_read_input_tokens', 0)
+            cache_create = usage.get('cache_creation_input_tokens', 0) or usage.get('cache_create_input_tokens', 0)
+
             if input_tokens > 0 or cache_read > 0:
-                # 加上系统提示和工具定义的估算值
-                system_overhead = 30000  # 系统提示+工具定义约30k
-                active_tokens = input_tokens + cache_read + system_overhead
+                # input_tokens 已包含所有内容（系统提示+工具+消息）
+                # cache_read 是从缓存读取的 tokens，也应计入上下文使用量
+                active_tokens = input_tokens + cache_read + cache_create
                 context_limit = 200000
                 return {
                     'used': active_tokens,
@@ -512,31 +454,32 @@ def get_context_usage():
     if not latest_file:
         return None
 
-    # 读取最新的 usage 信息（改进：读取最后一条完整的消息对）
+    # 增加读取行数到100行，提高找到最新数据的概率
     try:
         with open(latest_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
+        # 优先查找最近的完整消息对（user + assistant）
         # 从后往前找最新的 assistant 消息的 usage
-        for line in reversed(lines[-50:]):  # 增加到50行以确保找到完整信息
+        for line in reversed(lines[-100:]):
             try:
                 data = json.loads(line.strip())
                 usage = None
 
+                # 支持更多的数据结构格式
                 if data.get('type') == 'assistant' and data.get('message', {}).get('usage'):
                     usage = data['message']['usage']
                 elif data.get('usage'):
                     usage = data['usage']
+                elif data.get('response', {}).get('usage'):
+                    usage = data['response']['usage']
 
                 if usage and (usage.get('input_tokens', 0) > 0 or usage.get('cache_read_input_tokens', 0) > 0):
                     input_tokens = usage.get('input_tokens', 0)
                     cache_read = usage.get('cache_read_input_tokens', 0)
+                    cache_create = usage.get('cache_creation_input_tokens', 0) or usage.get('cache_create_input_tokens', 0)
 
-                    # 改进：系统开销包括系统提示(5k) + 工具定义(12k) + MCP工具(12k) + 预留(45k) ≈ 70-75k
-                    # 但这部分已经在 input_tokens 中了，所以只需要加上预留空间
-                    system_overhead = 50000  # 预留空间 + 一些系统开销
-
-                    active_tokens = input_tokens + cache_read + system_overhead
+                    active_tokens = input_tokens + cache_read + cache_create
                     context_limit = 200000
 
                     return {
@@ -561,62 +504,54 @@ def get_project_token_info():
     """获取项目token信息 - 基于本地项目文件计算"""
     current_dir_path = os.getcwd()
     current_dir_name = os.path.basename(current_dir_path) or 'unknown'
-    
+
     # Windows路径转换 - 修复Claude项目文件夹命名规则
     if current_dir_path.startswith('/c/'):
-        # bash格式路径 /c/Users/Administrator -> C:\Users\Administrator
         windows_path = 'C:' + current_dir_path[2:].replace('/', '\\')
     elif current_dir_path.startswith('/d/'):
-        # bash格式路径 /d/IP_tracker -> D:\IP_tracker
         windows_path = 'D:' + current_dir_path[2:].replace('/', '\\')
     elif current_dir_path.startswith('C:') or current_dir_path.startswith('D:'):
-        # 已经是Windows格式
         windows_path = current_dir_path
     else:
         windows_path = current_dir_path
-    
+
     # Claude项目文件夹命名规则: C:\Users\Administrator -> C--Users-Administrator
     claude_folder_name = windows_path.replace(':', '--').replace('\\', '-')
-    
-    # 修复下划线和短横线的匹配问题
     claude_folder_name_alt = claude_folder_name.replace('_', '-')
-    
+
     project_dir_patterns = [
         claude_folder_name,
         claude_folder_name_alt,
         current_dir_name,
-        current_dir_name.replace('_', '-'),  # IP_tracker -> IP-tracker
-        current_dir_name.replace('-', '_')   # IP-tracker -> IP_tracker  
+        current_dir_name.replace('_', '-'),
+        current_dir_name.replace('-', '_')
     ]
-    
+
     projects_dir = os.path.expanduser('~/.claude/projects')
     if not os.path.exists(projects_dir):
         return "0k"
-    
+
     project_tokens = 0
-    
-    # 在projects目录中查找匹配当前目录的文件夹
+
     for folder_name in os.listdir(projects_dir):
         folder_path = os.path.join(projects_dir, folder_name)
         if not os.path.isdir(folder_path):
             continue
-            
-        # 检查文件夹名是否包含当前目录的路径信息
+
         is_current_project = False
         for pattern in project_dir_patterns:
             if pattern in folder_name:
                 is_current_project = True
                 break
-        
+
         if is_current_project:
-            # 统计该项目文件夹中所有jsonl文件的tokens
             for file_name in os.listdir(folder_path):
                 if file_name.endswith('.jsonl'):
                     file_path = os.path.join(folder_path, file_name)
                     try:
                         with open(file_path, 'r', encoding='utf-8') as f:
                             lines = f.readlines()
-                        
+
                         for line in lines:
                             data = json.loads(line.strip())
                             if data.get('type') == 'assistant' and data.get('message', {}).get('usage'):
@@ -625,12 +560,10 @@ def get_project_token_info():
                                 output_tokens = usage.get('output_tokens', 0)
                                 cache_read_tokens = usage.get('cache_read_input_tokens', 0)
                                 cache_create_tokens = usage.get('cache_create_input_tokens', 0)
-                                # 统计所有4种tokens
                                 project_tokens += input_tokens + output_tokens + cache_read_tokens + cache_create_tokens
                     except:
                         continue
-    
-    # 格式化显示
+
     if project_tokens >= 1000000:
         return f"{project_tokens/1000000:.1f}M"
     elif project_tokens >= 1000:
@@ -643,62 +576,52 @@ def get_project_cost():
     """获取本目录消耗的费用 - 基于本地项目文件计算"""
     current_dir_path = os.getcwd()
     current_dir_name = os.path.basename(current_dir_path) or 'unknown'
-    
-    # Windows路径转换 - 修复Claude项目文件夹命名规则
+
     if current_dir_path.startswith('/c/'):
-        # bash格式路径 /c/Users/Administrator -> C:\Users\Administrator
         windows_path = 'C:' + current_dir_path[2:].replace('/', '\\')
     elif current_dir_path.startswith('/d/'):
-        # bash格式路径 /d/IP_tracker -> D:\IP_tracker
         windows_path = 'D:' + current_dir_path[2:].replace('/', '\\')
     elif current_dir_path.startswith('C:') or current_dir_path.startswith('D:'):
-        # 已经是Windows格式
         windows_path = current_dir_path
     else:
         windows_path = current_dir_path
-    
-    # Claude项目文件夹命名规则: C:\Users\Administrator -> C--Users-Administrator
+
     claude_folder_name = windows_path.replace(':', '--').replace('\\', '-')
-    
-    # 修复下划线和短横线的匹配问题
     claude_folder_name_alt = claude_folder_name.replace('_', '-')
-    
+
     project_dir_patterns = [
         claude_folder_name,
         claude_folder_name_alt,
         current_dir_name,
-        current_dir_name.replace('_', '-'),  # IP_tracker -> IP-tracker
-        current_dir_name.replace('-', '_')   # IP-tracker -> IP_tracker  
+        current_dir_name.replace('_', '-'),
+        current_dir_name.replace('-', '_')
     ]
-    
+
     projects_dir = os.path.expanduser('~/.claude/projects')
     if not os.path.exists(projects_dir):
         return "$0.00"
-    
+
     project_cost = 0
-    
-    # 在projects目录中查找匹配当前目录的文件夹
+
     for folder_name in os.listdir(projects_dir):
         folder_path = os.path.join(projects_dir, folder_name)
         if not os.path.isdir(folder_path):
             continue
-            
-        # 检查文件夹名是否包含当前目录的路径信息
+
         is_current_project = False
         for pattern in project_dir_patterns:
             if pattern in folder_name:
                 is_current_project = True
                 break
-        
+
         if is_current_project:
-            # 统计该项目文件夹中所有jsonl文件的费用
             for file_name in os.listdir(folder_path):
                 if file_name.endswith('.jsonl'):
                     file_path = os.path.join(folder_path, file_name)
                     try:
                         with open(file_path, 'r', encoding='utf-8') as f:
                             lines = f.readlines()
-                        
+
                         for line in lines:
                             data = json.loads(line.strip())
                             if data.get('type') == 'assistant' and data.get('message', {}).get('usage'):
@@ -707,8 +630,8 @@ def get_project_cost():
                                 output_tokens = usage.get('output_tokens', 0)
                                 cache_read_tokens = usage.get('cache_read_input_tokens', 0)
                                 cache_create_tokens = usage.get('cache_create_input_tokens', 0)
-                                
-                                # 费用计算（包含所有4种tokens）
+
+                                # 费用计算（Sonnet 3.5价格）
                                 # input: $3/M, output: $15/M, cache_read: $0.3/M, cache_create: $3.75/M
                                 cost = (
                                     input_tokens * 3.0 / 1000000 +
@@ -719,7 +642,7 @@ def get_project_cost():
                                 project_cost += cost
                     except:
                         continue
-    
+
     return f"${project_cost:.2f}"
 
 @safe_execute("0h")
@@ -727,69 +650,58 @@ def get_project_time():
     """获取本目录实际工作时间 - 基于会话计算"""
     current_dir_path = os.getcwd()
     current_dir_name = os.path.basename(current_dir_path) or 'unknown'
-    
-    # Windows路径转换 - 修复Claude项目文件夹命名规则
+
     if current_dir_path.startswith('/c/'):
-        # bash格式路径 /c/Users/Administrator -> C:\Users\Administrator
         windows_path = 'C:' + current_dir_path[2:].replace('/', '\\')
     elif current_dir_path.startswith('/d/'):
-        # bash格式路径 /d/IP_tracker -> D:\IP_tracker
         windows_path = 'D:' + current_dir_path[2:].replace('/', '\\')
     elif current_dir_path.startswith('C:') or current_dir_path.startswith('D:'):
-        # 已经是Windows格式
         windows_path = current_dir_path
     else:
         windows_path = current_dir_path
-    
-    # Claude项目文件夹命名规则: C:\Users\Administrator -> C--Users-Administrator
+
     claude_folder_name = windows_path.replace(':', '--').replace('\\', '-')
-    
-    # 修复下划线和短横线的匹配问题
     claude_folder_name_alt = claude_folder_name.replace('_', '-')
-    
+
     project_dir_patterns = [
         claude_folder_name,
         claude_folder_name_alt,
         current_dir_name,
-        current_dir_name.replace('_', '-'),  # IP_tracker -> IP-tracker
-        current_dir_name.replace('-', '_')   # IP-tracker -> IP_tracker  
+        current_dir_name.replace('_', '-'),
+        current_dir_name.replace('-', '_')
     ]
-    
+
     projects_dir = os.path.expanduser('~/.claude/projects')
     if not os.path.exists(projects_dir):
         return "0h"
-    
-    all_sessions = {}  # sessionId -> [timestamps]
-    
-    # 在projects目录中查找匹配当前目录的文件夹
+
+    all_sessions = {}
+
     for folder_name in os.listdir(projects_dir):
         folder_path = os.path.join(projects_dir, folder_name)
         if not os.path.isdir(folder_path):
             continue
-            
-        # 检查文件夹名是否包含当前目录的路径信息
+
         is_current_project = False
         for pattern in project_dir_patterns:
             if pattern in folder_name:
                 is_current_project = True
                 break
-        
+
         if is_current_project:
-            # 遍历该项目文件夹中所有jsonl文件，按会话收集时间戳
             for file_name in os.listdir(folder_path):
                 if file_name.endswith('.jsonl'):
                     file_path = os.path.join(folder_path, file_name)
                     try:
                         with open(file_path, 'r', encoding='utf-8') as f:
                             lines = f.readlines()
-                        
+
                         for line in lines:
                             data = json.loads(line.strip())
                             session_id = data.get('sessionId')
                             timestamp_str = data.get('timestamp')
                             if session_id and timestamp_str:
                                 try:
-                                    # 解析ISO 8601格式的时间字符串
                                     timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00')).timestamp()
                                     if session_id not in all_sessions:
                                         all_sessions[session_id] = []
@@ -798,150 +710,25 @@ def get_project_time():
                                     continue
                     except:
                         continue
-    
+
     total_work_time = 0
-    
-    # 计算每个会话的工作时间
+
     for session_id, timestamps in all_sessions.items():
         if len(timestamps) >= 2:
             timestamps.sort()
-            # 每个会话的工作时间 = 最后一条记录 - 第一条记录
             session_time = timestamps[-1] - timestamps[0]
-            # 限制单个会话最长8小时（防止长时间未关闭的会话影响统计）
-            session_time = min(session_time, 8 * 3600)
+            session_time = min(session_time, 8 * 3600)  # 限制单个会话最长8小时
             total_work_time += session_time
-    
+
     if total_work_time > 0:
-        hours = total_work_time / 3600  # 转换为小时
-        
-        # 格式化显示
+        hours = total_work_time / 3600
         if hours >= 1:
             return f"{hours:.1f}h"
         else:
             minutes = hours * 60
             return f"{minutes:.0f}m"
-    
+
     return "0h"
-
-@safe_execute(None)
-def get_account_pool_summary():
-    """获取账号池汇总信息"""
-    try:
-        # 先尝试使用缓存的 token
-        bearer_token = get_cached_token()
-
-        # 如果没有缓存或缓存过期，重新登录
-        if not bearer_token:
-            bearer_token = login_super_yi()
-            if not bearer_token:
-                return None
-
-        response = requests.get(
-            'https://super-yi.com/user-api/account-pool/summary?model=claude-sonnet-4-5-20250929',
-            headers={
-                'accept': 'application/json, text/plain, */*',
-                'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'authorization': f'Bearer {bearer_token}',
-                'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"',
-                'sec-fetch-dest': 'empty',
-                'sec-fetch-mode': 'cors',
-                'sec-fetch-site': 'same-origin',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            },
-            timeout=3
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('success'):
-                return data.get('summary', {}).get('overall', {})
-
-        # 如果 token 失效，删除缓存并重试一次
-        if response.status_code == 401:
-            cache_file = os.path.expanduser('~/.claude/.super_yi_token')
-            try:
-                if os.path.exists(cache_file):
-                    os.remove(cache_file)
-            except:
-                pass
-
-            # 重新登录再试一次
-            bearer_token = login_super_yi()
-            if bearer_token:
-                response = requests.get(
-                    'https://super-yi.com/user-api/account-pool/summary?model=claude-sonnet-4-5-20250929',
-                    headers={
-                        'accept': 'application/json, text/plain, */*',
-                        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                        'authorization': f'Bearer {bearer_token}',
-                        'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
-                        'sec-ch-ua-mobile': '?0',
-                        'sec-ch-ua-platform': '"Windows"',
-                        'sec-fetch-dest': 'empty',
-                        'sec-fetch-mode': 'cors',
-                        'sec-fetch-site': 'same-origin',
-                        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    },
-                    timeout=3
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('success'):
-                        return data.get('summary', {}).get('overall', {})
-    except:
-        pass
-    return None
-
-@safe_execute("🔋N/A")
-def format_account_pool_display(pool_data):
-    """格式化账号池状态显示 - 分段进度条版（包含4种状态）"""
-    if not pool_data:
-        return colorize("🔋", Colors.BRIGHT_BLUE) + colorize("N/A", Colors.DIM)
-
-    # 提取4种状态的账号数量
-    total = pool_data.get('total', 0)
-    normal = pool_data.get('normal', 0)          # 正常可用
-    rate_limited = pool_data.get('rateLimited', 0)  # 速率限制
-    blocked = pool_data.get('blocked', 0)        # 已阻止
-    inactive = pool_data.get('inactive', 0)      # 不活跃
-
-    if total == 0:
-        return colorize("🔋", Colors.BRIGHT_BLUE) + colorize("0", Colors.DIM)
-
-    # 构建分段进度条 - 显示4种状态
-    bar_parts = []
-
-    # 正常账号 - 绿色█
-    for _ in range(normal):
-        bar_parts.append(colorize("█", Colors.BRIGHT_GREEN))
-
-    # 速率限制账号 - 黄色█
-    for _ in range(rate_limited):
-        bar_parts.append(colorize("█", Colors.BRIGHT_YELLOW))
-
-    # 不活跃账号 - 黄色█（和限速相同颜色）
-    for _ in range(inactive):
-        bar_parts.append(colorize("█", Colors.BRIGHT_YELLOW))
-
-    # 已阻止账号 - 红色█
-    for _ in range(blocked):
-        bar_parts.append(colorize("█", Colors.BRIGHT_RED))
-
-    # 组装显示：🔋正常数/总数[进度条]
-    progress_bar = "".join(bar_parts)
-
-    return (
-        colorize("🔋", Colors.BRIGHT_BLUE) +
-        colorize(str(normal), Colors.BRIGHT_GREEN, bold=True) +
-        colorize("/", Colors.BRIGHT_CYAN) +
-        colorize(str(total), Colors.WHITE, bold=True) +
-        colorize("[", Colors.BRIGHT_CYAN) +
-        progress_bar +
-        colorize("]", Colors.BRIGHT_CYAN)
-    )
 
 @safe_execute("00:00")
 def get_current_time():
@@ -954,43 +741,53 @@ def main():
     try:
         # 获取API统计数据
         api_data = get_claude_api_stats()
-        
-        # 美化的分隔符 - 使用原始的"┃"符号并添加亮色
+
+        # 美化的分隔符
         separator = " " + colorize("┃", Colors.BRIGHT_CYAN) + " "
-        
-        # 项目信息组合 - 简化显示
+
+        # 项目信息组合
         project_name = get_project_info()
         project_tokens = get_project_token_info()
         project_cost = get_project_cost()
         project_time = get_project_time()
 
-        # 账号池信息
-        pool_data = get_account_pool_summary()
-
-        # 账户余额 + 账号池状态组合（添加分隔符）
-        account_info = format_total_cost_display(api_data) + " " + colorize("┃", Colors.BRIGHT_CYAN) + " " + format_account_pool_display(pool_data)
+        # 账户配额显示
+        account_info = format_total_cost_display(api_data)
 
         # 当前时间
         current_time = get_current_time()
 
-        # 格式：Administrator:2.9M($42.63) ⏱️ 2.5h 🕐20:49
-        project_info = colorize("📁", Colors.YELLOW) + colorize(project_name, Colors.BRIGHT_WHITE, bold=True) + colorize(":", Colors.BRIGHT_CYAN) + colorize(project_tokens, Colors.GREEN, bold=True) + colorize("(", Colors.BRIGHT_WHITE) + colorize(project_cost, Colors.GREEN) + colorize(") ", Colors.BRIGHT_WHITE) + colorize("⏱️ ", Colors.CYAN) + colorize(project_time, Colors.BRIGHT_CYAN, bold=True) + " " + colorize("🕐", Colors.BRIGHT_CYAN) + colorize(current_time, Colors.BRIGHT_WHITE, bold=True)
+        # 格式：📁项目名:总token($费用) ⏱️工作时间 🕐当前时间
+        project_info = (
+            colorize("📁", Colors.YELLOW) +
+            colorize(project_name, Colors.BRIGHT_WHITE, bold=True) +
+            colorize(":", Colors.BRIGHT_CYAN) +
+            colorize(project_tokens, Colors.GREEN, bold=True) +
+            colorize("(", Colors.BRIGHT_WHITE) +
+            colorize(project_cost, Colors.GREEN) +
+            colorize(") ", Colors.BRIGHT_WHITE) +
+            colorize("⏱️ ", Colors.CYAN) +
+            colorize(project_time, Colors.BRIGHT_CYAN, bold=True) +
+            " " +
+            colorize("🕐", Colors.BRIGHT_CYAN) +
+            colorize(current_time, Colors.BRIGHT_WHITE, bold=True)
+        )
 
-        # 按新格式组织信息
+        # 按格式组织信息
         parts = [
-            account_info,                           # 账户余额 + 今日费用
-            get_model_info(),                       # 模型
-            get_git_info(),                         # git信息
-            get_context_display(),                  # 上下文
-            project_info                            # 目录信息:目录总token(项目费用) + 时间
+            account_info,           # 配额信息（5h + 周）
+            get_model_info(),       # 模型
+            get_git_info(),         # git信息
+            get_context_display(),  # 上下文
+            project_info            # 项目信息
         ]
-        
+
         print(separator.join(parts))
-        
+
     except Exception:
-        # 美化的错误回退显示
+        # 错误回退显示
         fallback_parts = [
-            colorize("获取失败", Colors.RED) + " " + colorize("┃", Colors.BRIGHT_CYAN) + " " + colorize("🔋", Colors.BRIGHT_BLUE) + colorize("N/A", Colors.DIM),
+            colorize("💰", Colors.GREEN) + colorize("5h:", Colors.BRIGHT_CYAN) + colorize("N/A", Colors.RED) + " " + colorize("周:", Colors.BRIGHT_MAGENTA) + colorize("N/A", Colors.RED),
             colorize("🤖", Colors.BLUE) + colorize("unknown", Colors.WHITE),
             colorize("📂", Colors.DIM) + colorize("no-git", Colors.DIM),
             colorize("🧠", Colors.GREEN) + colorize("0k", Colors.GREEN) + colorize("/", Colors.BRIGHT_CYAN) + colorize("200k", Colors.CYAN) + colorize("(0%)", Colors.GREEN),

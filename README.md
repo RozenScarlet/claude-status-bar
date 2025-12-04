@@ -4,23 +4,30 @@
 
 ## 功能特性
 
-- 💰 实时显示 API 使用成本和代币消耗
-- 📊 当前会话的统计信息（代币、成本、时长）
-- 🤖 当前使用的模型信息
-- 📁 项目文件统计（总行数、文件数等）
-- 🔄 Git 仓库状态（分支、修改数等）
-- 📈 上下文使用情况
-- 🎨 彩色输出，清晰易读
+- 💰 **订阅配额监控**：实时显示5小时窗口和周窗口的使用情况
+- 📊 **可视化进度条**：直观的使用率进度条，带重置时间倒计时
+- 🤖 **模型信息显示**：当前使用的模型（Opus/Sonnet/Haiku）带专属图标
+- 📁 **项目统计**：当前项目的总Token消耗、费用、工作时间
+- 🔄 **Git 仓库状态**：分支名、修改文件数等
+- 🧠 **上下文使用情况**：基于百分比的智能颜色提示
+- 🎨 **彩色输出**：ANSI颜色代码美化，清晰易读
+- 🕐 **当前时间**：实时显示系统时间
+
+## 状态栏预览
+
+```
+💰5h:██████░░░░60.0%(↻3h45m) 周:████░░░░░░40.0%(↻5d12h) ┃ ✨Opus 4.5 ┃ 🌿main(3) ┃ 🧠45k/200k(22%) ┃ 📁my-project:1.2M($18.50) ⏱️ 5.2h 🕐14:30
+```
 
 ## 快速开始
 
-### 一键安装 🚀
+### 一键安装
 
 #### Windows 用户
 
 ```bash
-# 1. 克隆或下载本项目
-git clone https://github.com/你的用户名/claude-status-bar.git
+# 1. 克隆项目
+git clone https://github.com/RozenScarlet/claude-status-bar.git
 cd claude-status-bar
 
 # 2. 运行安装脚本
@@ -30,8 +37,8 @@ setup.bat
 #### Linux/Mac 用户
 
 ```bash
-# 1. 克隆或下载本项目
-git clone https://github.com/你的用户名/claude-status-bar.git
+# 1. 克隆项目
+git clone https://github.com/RozenScarlet/claude-status-bar.git
 cd claude-status-bar
 
 # 2. 运行安装脚本
@@ -40,16 +47,13 @@ chmod +x setup.sh
 ```
 
 安装脚本会自动：
-1. ✅ 检查 Python 环境
-2. ✅ 安装所需依赖（requests、urllib3）
-3. ✅ 提示您输入 Claude API ID
-4. ✅ 复制文件到 `~/.claude` 目录
-5. ✅ 配置 API ID
-6. ✅ 更新 Claude Code 的 `settings.json`
-7. ✅ 自动备份原配置文件
-8. ✅ 测试运行状态栏
-
-安装完成后，重启 Claude Code 即可看到状态栏效果！
+1. 检查 Python 环境
+2. 安装所需依赖（requests、urllib3）
+3. 复制文件到 `~/.claude` 目录
+4. 提示您配置 API Key
+5. 更新 Claude Code 的 `settings.json`
+6. 自动备份原配置文件
+7. 测试运行状态栏
 
 ## 系统要求
 
@@ -59,34 +63,26 @@ chmod +x setup.sh
 
 ## 配置说明
 
-本项目支持 **Super-Yi API**，使用自动登录获取 Token，无需手动配置复杂的 Cookie 信息！
+本项目支持 **Cubence API**，用于获取订阅配额信息。
 
 ### 配置步骤
 
 编辑 `~/.claude/status-final.py`，修改顶部的配置信息：
 
 ```python
-# Super-Yi 账号配置
-SUPER_YI_EMAIL = "your-email@example.com"
-SUPER_YI_PASSWORD = "your-password"
+# Cubence API 配置（从 https://cubence.com 获取）
+CUBENCE_API_KEY = "sk-user-your-api-key-here"
 ```
 
-将 `your-email@example.com` 和 `your-password` 替换为你的 Super-Yi 账号和密码。
+将 `sk-user-your-api-key-here` 替换为你的 Cubence API Key。
 
-### 工作原理
+### 获取 API Key
 
-脚本会自动：
-1. ✅ 使用账号密码登录 Super-Yi API
-2. ✅ 获取 Bearer Token 并缓存到本地（`~/.claude/.super_yi_token`）
-3. ✅ Token 缓存 20 小时，过期自动刷新
-4. ✅ 失败自动重试，无需人工干预
+1. 访问 [Cubence](https://cubence.com)
+2. 登录你的账号
+3. 在账户设置中获取 API Key
 
-**⚠️ 安全提醒：**
-- 配置文件包含您的登录凭证，请妥善保管
-- 不要将包含真实账号密码的配置文件上传到公开仓库
-- Token 缓存在本地，仅供当前用户访问
-
-## 手动安装（不推荐）
+## 手动安装
 
 如果自动安装脚本遇到问题，您也可以手动安装：
 
@@ -101,17 +97,14 @@ copy run-status.bat %USERPROFILE%\.claude\
 
 # Linux/Mac
 cp status-final.py ~/.claude/
-cp run-status.bat ~/.claude/
 ```
 
-### 2. 配置账号信息
+### 2. 配置 API Key
 
 编辑 `~/.claude/status-final.py`，修改顶部的配置：
 
 ```python
-# Super-Yi 账号配置
-SUPER_YI_EMAIL = "your-email@example.com"
-SUPER_YI_PASSWORD = "your-password"
+CUBENCE_API_KEY = "sk-user-your-api-key-here"
 ```
 
 ### 3. 安装依赖
@@ -168,13 +161,33 @@ chmod +x ~/.claude/run-status.sh
 
 ## 状态栏显示内容
 
-状态栏包含以下信息：
+状态栏包含以下信息（从左到右）：
 
-- **总用量**: API 总代币数和总成本
-- **模型**: 当前使用的 AI 模型
-- **上下文**: 当前会话的上下文使用情况
-- **项目**: 当前项目的统计信息（代币、成本、用时）
-- **Git**: Git 仓库信息（如果在 Git 仓库中）
+| 模块 | 说明 | 示例 |
+|------|------|------|
+| **配额信息** | 5小时窗口 + 周窗口使用率 | `💰5h:██░░60%(↻3h) 周:██░░40%(↻5d)` |
+| **模型** | 当前使用的 AI 模型 | `✨Opus 4.5` / `⚡Sonnet` / `🍃Haiku` |
+| **Git** | Git 仓库信息 | `🌿main(3)` |
+| **上下文** | 当前会话上下文使用量 | `🧠45k/200k(22%)` |
+| **项目** | 项目统计信息 | `📁项目:1.2M($18.50) ⏱️5.2h 🕐14:30` |
+
+### 颜色含义
+
+#### 配额使用率
+- 绿色/白色：0-40%（安全）
+- 黄色：40-80%（警告）
+- 红色：80%以上（危险）
+
+#### 上下文使用率
+- 绿色：0-30%（轻松）
+- 青色/蓝色：30-50%（正常）
+- 黄色：50-70%（警告）
+- 红色：70%以上（危险，建议清理）
+
+#### Git 修改文件数
+- 黄色数字：1-5个文件
+- 橙色数字：6-10个文件
+- 红色火焰：10个以上文件
 
 ## 常见问题
 
@@ -185,55 +198,22 @@ chmod +x ~/.claude/run-status.sh
 3. 确认依赖包已安装：`pip list | grep requests`
 4. 尝试手动运行脚本测试：`python ~/.claude/status-final.py`
 
-### Q: API 统计信息不显示？
+### Q: 配额信息显示"获取失败"？
 
-请确认您的账号信息配置正确，并且 API 服务器可访问。
+请确认：
+1. API Key 配置正确
+2. 网络连接正常
+3. Cubence 服务可访问
 
-### Q: 配置后很长时间没有生成 .super_yi_token 文件？
+### Q: 上下文显示"ERR"？
 
-如果配置完成后状态栏无法显示 API 信息，可能是登录失败导致 Token 无法获取。请按以下步骤排查：
+这表示无法从 Claude Code 获取上下文信息。可能原因：
+- 新启动的会话还没有消息
+- transcript.jsonl 文件不存在
 
-**1. 运行诊断工具**
+### Q: 如何自定义显示内容？
 
-```bash
-# 进入仓库目录
-cd ~/claude-status-bar
-
-# 运行诊断脚本
-python test-login.py
-```
-
-诊断工具会自动检查：
-- ✅ 网络连接是否正常
-- ✅ 配置文件是否正确
-- ✅ 登录是否成功
-- ✅ Token 是否正确保存
-
-**2. 常见问题和解决方案**
-
-| 问题 | 可能原因 | 解决方案 |
-|------|---------|---------|
-| 配置文件包含默认值 | 未修改占位符 | 编辑 `~/.claude/status-final.py`，填入真实账号 |
-| 账号或密码错误 | 配置信息有误 | 在浏览器中验证账号，确认可以登录 |
-| 网络连接失败 | 防火墙/代理问题 | 检查网络设置，确保可以访问 super-yi.com |
-| API 接口变更 | 服务端更新 | 在 GitHub 提 Issue，我们会及时更新 |
-
-**3. 手动测试登录**
-
-如果诊断工具无法解决问题，可以手动测试：
-
-```python
-# 手动测试脚本
-python -c "
-import requests
-response = requests.post('https://super-yi.com/auth/login',
-    json={'email': 'your-email@example.com', 'password': 'your-password'})
-print(response.status_code)
-print(response.json())
-"
-```
-
-将 `your-email@example.com` 和 `your-password` 替换为你的真实账号信息。
+您可以编辑 `status-final.py` 中的 `main()` 函数来自定义状态栏的显示内容和顺序。
 
 ### Q: 如何卸载？
 
@@ -241,9 +221,19 @@ print(response.json())
 2. 从 `~/.claude/settings.json` 中移除 `statusLine` 配置
 3. 重启 Claude Code
 
-## 自定义
+## 更新日志
 
-您可以编辑 `status-final.py` 来自定义状态栏的显示内容和样式。脚本使用 ANSI 颜色代码来美化输出。
+### v2.0.0 (2024-12)
+- 新增：Cubence API 支持，5小时+周窗口配额显示
+- 新增：重置时间倒计时显示
+- 优化：上下文使用率改为基于百分比的阈值判断
+- 优化：进度条视觉效果改进
+- 优化：增强的数据结构支持，提高上下文获取成功率
+
+### v1.0.0 (2024-10)
+- 初始版本
+- 支持 Super-Yi API
+- 基础状态栏功能
 
 ## 贡献
 

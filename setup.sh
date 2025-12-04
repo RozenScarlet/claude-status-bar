@@ -9,7 +9,7 @@ NC='\033[0m' # No Color
 
 echo
 echo "========================================"
-echo "  Claude Status Bar 一键配置工具"
+echo "  Claude Status Bar v2.0 一键配置工具"
 echo "========================================"
 echo
 
@@ -66,21 +66,16 @@ else
 fi
 echo
 
-# 询问用户输入账号信息
-echo -e "${BLUE}[3/5] 配置 Super-Yi 账号...${NC}"
-echo "请输入您的 Super-Yi 账号信息:"
-read -p "Email: " EMAIL
-if [ -z "$EMAIL" ]; then
-    echo -e "${RED}[错误] Email 不能为空${NC}"
+# 询问用户输入 API Key
+echo -e "${BLUE}[3/5] 配置 Cubence API Key...${NC}"
+echo "请输入您的 Cubence API Key:"
+echo "(从 https://cubence.com 获取)"
+read -p "API Key: " API_KEY
+if [ -z "$API_KEY" ]; then
+    echo -e "${RED}[错误] API Key 不能为空${NC}"
     exit 1
 fi
-read -sp "Password: " PASSWORD
-echo
-if [ -z "$PASSWORD" ]; then
-    echo -e "${RED}[错误] Password 不能为空${NC}"
-    exit 1
-fi
-echo -e "${GREEN}[√] 账号配置完成${NC}"
+echo -e "${GREEN}[√] API Key 配置完成${NC}"
 echo
 
 # 定位 .claude 文件夹
@@ -124,8 +119,8 @@ EOFSCRIPT
 chmod +x "$CLAUDE_DIR/run-status.sh"
 echo -e "${GREEN}[√] 文件复制完成${NC}"
 
-# 替换 status-final.py 中的账号信息
-echo -e "${BLUE}[*] 配置账号信息...${NC}"
+# 替换 status-final.py 中的 API Key
+echo -e "${BLUE}[*] 配置 API Key...${NC}"
 STATUS_PY="$CLAUDE_DIR/status-final.py"
 
 $PYTHON_CMD << EOF
@@ -133,8 +128,7 @@ import re
 try:
     with open(r'$STATUS_PY', 'r', encoding='utf-8') as f:
         content = f.read()
-    content = re.sub(r'SUPER_YI_EMAIL\s*=\s*[\'"].*?[\'"]', 'SUPER_YI_EMAIL = "$EMAIL"', content)
-    content = re.sub(r'SUPER_YI_PASSWORD\s*=\s*[\'"].*?[\'"]', 'SUPER_YI_PASSWORD = "$PASSWORD"', content)
+    content = re.sub(r'CUBENCE_API_KEY\s*=\s*[\'"].*?[\'"]', 'CUBENCE_API_KEY = "$API_KEY"', content)
     with open(r'$STATUS_PY', 'w', encoding='utf-8') as f:
         f.write(content)
     print("SUCCESS")
@@ -144,10 +138,10 @@ except Exception as e:
 EOF
 
 if [ $? -ne 0 ]; then
-    echo -e "${RED}[错误] 配置账号信息失败${NC}"
+    echo -e "${RED}[错误] 配置 API Key 失败${NC}"
     exit 1
 fi
-echo -e "${GREEN}[√] 账号信息配置完成${NC}"
+echo -e "${GREEN}[√] API Key 配置完成${NC}"
 
 # 更新 settings.json
 echo -e "${BLUE}[*] 更新 Claude Code 配置...${NC}"
@@ -209,8 +203,7 @@ echo -e "${GREEN}  配置完成！${NC}"
 echo "========================================"
 echo
 echo "配置详情:"
-echo "  - Email: $EMAIL"
-echo "  - Password: ******"
+echo "  - API Key: ${API_KEY:0:20}..."
 echo "  - 状态栏脚本: $CLAUDE_DIR/status-final.py"
 echo "  - 启动脚本: $RUN_SCRIPT"
 echo "  - 配置文件: $SETTINGS_FILE"
