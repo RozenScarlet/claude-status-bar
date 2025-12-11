@@ -2,7 +2,7 @@
 # 配置区域 - 请修改下面的配置为你自己的
 # ================================
 # Cubence API 配置
-CUBENCE_API_KEY = "sk-user-your-api-key-here"
+CUBENCE_API_KEY = "sk-user-5aa3456ed0282dcc37a63774a96570762ea0412a833c7d6a39674b8bcebace39"
 
 import json
 import os
@@ -241,30 +241,43 @@ def format_total_cost_display(api_data):
         else:
             return f"{minutes}m"
 
-    # 生成进度条函数
+    # 生成进度条函数 - 每格5种状态：全绿→半绿→全黄→半红→全红
     def make_progress_bar(usage_ratio, bar_length=10):
+        result = []
         precise_ratio = usage_ratio * bar_length
-        full_blocks = int(precise_ratio)
-        partial = precise_ratio - full_blocks
-
-        # 根据使用率决定颜色
-        if usage_ratio >= 0.8:
-            fill_color = Colors.RED
-        elif usage_ratio >= 0.4:
-            fill_color = Colors.YELLOW
+        full_blocks = int(precise_ratio)  # 完全填满的格子数
+        partial = precise_ratio - full_blocks  # 当前格子的填充比例(0-1)
+        
+        # 已填满的格子都是全红（表示该格已完全用完）
+        for i in range(full_blocks):
+            result.append(colorize('█', Colors.RED))
+        
+        # 当前正在填充的格子，5种状态
+        if full_blocks < bar_length and partial > 0:
+            if partial < 0.2:
+                # 0-20%: 全绿
+                result.append(colorize('█', Colors.GREEN))
+            elif partial < 0.4:
+                # 20-40%: 半绿
+                result.append(colorize('▓', Colors.GREEN))
+            elif partial < 0.6:
+                # 40-60%: 全黄
+                result.append(colorize('█', Colors.YELLOW))
+            elif partial < 0.8:
+                # 60-80%: 半红
+                result.append(colorize('▓', Colors.RED))
+            else:
+                # 80-100%: 全红
+                result.append(colorize('█', Colors.RED))
+            empty_start = full_blocks + 1
         else:
-            fill_color = Colors.RED  # 已用部分用红色
-
-        filled_bar = '█' * full_blocks
-        partial_bar = '░' if partial > 0.5 else ''
-        empty_length = bar_length - full_blocks - (1 if partial_bar else 0)
-        empty_bar = '░' * empty_length
-
-        return (
-            colorize(filled_bar, fill_color) +
-            colorize(partial_bar, Colors.YELLOW if partial > 0.5 else Colors.GREEN) +
-            colorize(empty_bar, Colors.GREEN)
-        )
+            empty_start = full_blocks
+        
+        # 未使用的格子是全绿（表示还可用）
+        for i in range(empty_start, bar_length):
+            result.append(colorize('█', Colors.GREEN))
+        
+        return ''.join(result)
 
     # === 五小时窗口 ===
     five_usage_ratio = five_used / five_limit if five_limit > 0 else 0
