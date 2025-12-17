@@ -1,8 +1,12 @@
 # ================================
 # 配置区域 - 请修改下面的配置为你自己的
 # ================================
-# Cubence API 配置
-CUBENCE_API_KEY = "sk-user-5aa3456ed0282dcc37a63774a96570762ea0412a833c7d6a39674b8bcebace39"
+# Cubence API 配置 (必需 - 用于获取订阅配额信息)
+CUBENCE_API_KEY = "your-cubence-api-key-here"
+
+# XiaoAi API 配置 (可选 - 旧版功能，当前未使用)
+# XIAOAI_EMAIL = "your-email@example.com"
+# XIAOAI_PASSWORD = "your-password-here"
 
 import json
 import os
@@ -20,6 +24,10 @@ try:
     stdin_data = sys.stdin.read().strip()
     if stdin_data:
         claude_input = json.loads(stdin_data)
+        # 调试：打印收到的完整JSON到文件
+        debug_file = os.path.expanduser('~/.claude/statusline_debug.json')
+        with open(debug_file, 'w', encoding='utf-8') as f:
+            json.dump(claude_input, f, indent=2, ensure_ascii=False)
 except:
     pass
 
@@ -538,103 +546,24 @@ def get_context_display():
 
 @safe_execute(None)
 def get_context_usage():
-    """获取当前会话的上下文使用量 - 改进版"""
-    # 方法1：优先从 Claude Code stdin 获取（最准确）
-    if claude_input:
-        # 检查是否有 context 信息
-        if claude_input.get('context'):
-            context = claude_input['context']
-            used = context.get('used_tokens', 0) or context.get('used', 0)
-            total = context.get('limit', 200000) or context.get('total', 200000)
-            if used > 0:
-                return {
-                    'used': used,
-                    'total': total,
-                    'percentage': round((used / total) * 100)
-                }
+    """获取当前会话的上下文使用量 - 使用 context_window.current_usage（最精确）"""
+    if claude_input and claude_input.get('context_window'):
+        ctx = claude_input['context_window']
+        context_limit = ctx.get('context_window_size', 200000)
+        current_usage = ctx.get('current_usage', {})
 
-        # 改进4：增强 usage 信息提取，支持更多字段
-        if claude_input.get('usage'):
-            usage = claude_input['usage']
-            input_tokens = usage.get('input_tokens', 0)
-            cache_read = usage.get('cache_read_input_tokens', 0)
-            cache_create = usage.get('cache_creation_input_tokens', 0) or usage.get('cache_create_input_tokens', 0)
+        if current_usage:
+            input_tokens = current_usage.get('input_tokens', 0)
+            cache_read = current_usage.get('cache_read_input_tokens', 0)
+            cache_create = current_usage.get('cache_creation_input_tokens', 0)
+            active_tokens = input_tokens + cache_read + cache_create
 
-            if input_tokens > 0 or cache_read > 0:
-                # 修正：input_tokens 已包含所有内容（系统提示+工具+消息），无需额外添加
-                # cache_read 是从缓存读取的 tokens，也应计入上下文使用量
-                active_tokens = input_tokens + cache_read + cache_create
-                context_limit = 200000
+            if active_tokens > 0:
                 return {
                     'used': active_tokens,
                     'total': context_limit,
                     'percentage': round((active_tokens / context_limit) * 100)
                 }
-
-    # 方法2：解析最新的 transcript.jsonl 文件
-    possible_dirs = [
-        os.path.expanduser('~/.claude/projects'),
-        os.path.expanduser('~/.claude/conversations'),
-        os.path.join(os.getcwd(), '.claude'),
-    ]
-
-    latest_file = None
-    latest_time = 0
-
-    for projects_dir in possible_dirs:
-        if not os.path.exists(projects_dir):
-            continue
-
-        for root, dirs, files in os.walk(projects_dir):
-            for file in files:
-                if file.endswith('.jsonl') or file == 'transcript.jsonl':
-                    file_path = os.path.join(root, file)
-                    mtime = os.path.getmtime(file_path)
-                    if mtime > latest_time:
-                        latest_time = mtime
-                        latest_file = file_path
-
-    if not latest_file:
-        return None
-
-    # 改进6：增加读取行数，从50行增加到100行，提高找到最新数据的概率
-    try:
-        with open(latest_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        # 改进7：优先查找最近的完整消息对（user + assistant）
-        # 从后往前找最新的 assistant 消息的 usage
-        for line in reversed(lines[-100:]):  # 增加到100行，提高成功率
-            try:
-                data = json.loads(line.strip())
-                usage = None
-
-                # 改进8：支持更多的数据结构格式
-                if data.get('type') == 'assistant' and data.get('message', {}).get('usage'):
-                    usage = data['message']['usage']
-                elif data.get('usage'):
-                    usage = data['usage']
-                elif data.get('response', {}).get('usage'):
-                    usage = data['response']['usage']
-
-                if usage and (usage.get('input_tokens', 0) > 0 or usage.get('cache_read_input_tokens', 0) > 0):
-                    input_tokens = usage.get('input_tokens', 0)
-                    cache_read = usage.get('cache_read_input_tokens', 0)
-                    cache_create = usage.get('cache_creation_input_tokens', 0) or usage.get('cache_create_input_tokens', 0)
-
-                    # 修正：与方法1保持一致，input_tokens 已包含所有内容
-                    active_tokens = input_tokens + cache_read + cache_create
-                    context_limit = 200000
-
-                    return {
-                        'used': active_tokens,
-                        'total': context_limit,
-                        'percentage': round((active_tokens / context_limit) * 100)
-                    }
-            except:
-                continue
-    except:
-        pass
 
     return None
 
