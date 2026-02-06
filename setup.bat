@@ -30,19 +30,27 @@ if errorlevel 1 (
 )
 echo.
 
-REM Get API Key
-echo [3/5] Configure Cubence API Key...
+REM Get TigerAPI credentials
+echo [3/5] Configure TigerAPI...
 echo.
-echo Please enter your Cubence API Key:
-echo (Get it from https://cubence.com)
-echo.
-set /p API_KEY="API Key: "
-if "!API_KEY!"=="" (
-    echo [ERROR] API Key cannot be empty
+echo Please enter your TigerAPI Username:
+set /p TIGER_USER="Username: "
+if "!TIGER_USER!"=="" (
+    echo [ERROR] Username cannot be empty
     pause
     exit /b 1
 )
-echo [OK] API Key configured
+echo.
+echo Please enter your TigerAPI Password:
+set /p TIGER_PASS="Password: "
+if "!TIGER_PASS!"=="" (
+    echo [ERROR] Password cannot be empty
+    pause
+    exit /b 1
+)
+set TIGER_URL=https://tiger.bookapi.cc
+set TIGER_QUOTA=500000
+echo [OK] TigerAPI configured
 echo.
 
 REM Locate .claude folder
@@ -82,31 +90,35 @@ if errorlevel 1 (
 echo [OK] Files copied
 echo.
 
-REM Replace API Key - create temp Python script
-echo [*] Configuring API Key...
+REM Replace TigerAPI config - create temp Python script
+echo [*] Configuring TigerAPI...
 set STATUS_PY=!CLAUDE_DIR!\status-final.py
 
 echo import sys > temp_replace.py
 echo import re >> temp_replace.py
 echo file_path = sys.argv[1] >> temp_replace.py
-echo api_key = sys.argv[2] >> temp_replace.py
+echo api_url = sys.argv[2] >> temp_replace.py
+echo username = sys.argv[3] >> temp_replace.py
+echo password = sys.argv[4] >> temp_replace.py
+echo quota = sys.argv[5] >> temp_replace.py
 echo with open(file_path, 'r', encoding='utf-8'^) as f: >> temp_replace.py
 echo     content = f.read(^) >> temp_replace.py
-echo pattern = r'CUBENCE_API_KEY\s*=\s*[\"'"'"'].*?[\"'"'"']' >> temp_replace.py
-echo replacement = 'CUBENCE_API_KEY = "' + api_key + '"' >> temp_replace.py
-echo content = re.sub(pattern, replacement, content^) >> temp_replace.py
+echo content = re.sub(r'TIGER_API_URL\s*=\s*[\"'"'"'].*?[\"'"'"']', 'TIGER_API_URL = "' + api_url + '"', content^) >> temp_replace.py
+echo content = re.sub(r'TIGER_USERNAME\s*=\s*[\"'"'"'].*?[\"'"'"']', 'TIGER_USERNAME = "' + username + '"', content^) >> temp_replace.py
+echo content = re.sub(r'TIGER_PASSWORD\s*=\s*[\"'"'"'].*?[\"'"'"']', 'TIGER_PASSWORD = "' + password + '"', content^) >> temp_replace.py
+echo content = re.sub(r'TIGER_QUOTA_PER_UNIT\s*=\s*\d+', 'TIGER_QUOTA_PER_UNIT = ' + quota, content^) >> temp_replace.py
 echo with open(file_path, 'w', encoding='utf-8'^) as f: >> temp_replace.py
 echo     f.write(content^) >> temp_replace.py
 
-python temp_replace.py "!STATUS_PY!" "!API_KEY!"
+python temp_replace.py "!STATUS_PY!" "!TIGER_URL!" "!TIGER_USER!" "!TIGER_PASS!" "!TIGER_QUOTA!"
 if errorlevel 1 (
-    echo [ERROR] Failed to configure API Key
+    echo [ERROR] Failed to configure TigerAPI
     del temp_replace.py
     pause
     exit /b 1
 )
 del temp_replace.py
-echo [OK] API Key configured
+echo [OK] TigerAPI configured
 echo.
 
 REM Update settings.json - create temp Python script
@@ -153,7 +165,8 @@ echo   Setup Complete!
 echo ========================================
 echo.
 echo Configuration:
-echo   - API Key: !API_KEY:~0,20!...
+echo   - API URL: !TIGER_URL!
+echo   - Username: !TIGER_USER!
 echo   - Status script: !CLAUDE_DIR!\status-final.py
 echo   - Launch script: !CLAUDE_DIR!\run-status.bat
 echo   - Settings file: !SETTINGS_FILE!

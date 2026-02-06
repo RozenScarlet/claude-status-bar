@@ -66,16 +66,25 @@ else
 fi
 echo
 
-# 询问用户输入 API Key
-echo -e "${BLUE}[3/5] 配置 Cubence API Key...${NC}"
-echo "请输入您的 Cubence API Key:"
-echo "(从 https://cubence.com 获取)"
-read -p "API Key: " API_KEY
-if [ -z "$API_KEY" ]; then
-    echo -e "${RED}[错误] API Key 不能为空${NC}"
+# 询问用户输入 TigerAPI 配置
+echo -e "${BLUE}[3/5] 配置 TigerAPI...${NC}"
+echo "请输入您的 TigerAPI 用户名:"
+read -p "Username: " TIGER_USER
+if [ -z "$TIGER_USER" ]; then
+    echo -e "${RED}[错误] 用户名不能为空${NC}"
     exit 1
 fi
-echo -e "${GREEN}[√] API Key 配置完成${NC}"
+echo
+echo "请输入您的 TigerAPI 密码:"
+read -sp "Password: " TIGER_PASS
+echo
+if [ -z "$TIGER_PASS" ]; then
+    echo -e "${RED}[错误] 密码不能为空${NC}"
+    exit 1
+fi
+TIGER_URL="https://tiger.bookapi.cc"
+TIGER_QUOTA=500000
+echo -e "${GREEN}[√] TigerAPI 配置完成${NC}"
 echo
 
 # 定位 .claude 文件夹
@@ -119,8 +128,8 @@ EOFSCRIPT
 chmod +x "$CLAUDE_DIR/run-status.sh"
 echo -e "${GREEN}[√] 文件复制完成${NC}"
 
-# 替换 status-final.py 中的 API Key
-echo -e "${BLUE}[*] 配置 API Key...${NC}"
+# 替换 status-final.py 中的 TigerAPI 配置
+echo -e "${BLUE}[*] 配置 TigerAPI...${NC}"
 STATUS_PY="$CLAUDE_DIR/status-final.py"
 
 $PYTHON_CMD << EOF
@@ -128,7 +137,10 @@ import re
 try:
     with open(r'$STATUS_PY', 'r', encoding='utf-8') as f:
         content = f.read()
-    content = re.sub(r'CUBENCE_API_KEY\s*=\s*[\'"].*?[\'"]', 'CUBENCE_API_KEY = "$API_KEY"', content)
+    content = re.sub(r'TIGER_API_URL\s*=\s*[\'"].*?[\'"]', 'TIGER_API_URL = "$TIGER_URL"', content)
+    content = re.sub(r'TIGER_USERNAME\s*=\s*[\'"].*?[\'"]', 'TIGER_USERNAME = "$TIGER_USER"', content)
+    content = re.sub(r'TIGER_PASSWORD\s*=\s*[\'"].*?[\'"]', 'TIGER_PASSWORD = "$TIGER_PASS"', content)
+    content = re.sub(r'TIGER_QUOTA_PER_UNIT\s*=\s*\d+', 'TIGER_QUOTA_PER_UNIT = $TIGER_QUOTA', content)
     with open(r'$STATUS_PY', 'w', encoding='utf-8') as f:
         f.write(content)
     print("SUCCESS")
@@ -138,10 +150,10 @@ except Exception as e:
 EOF
 
 if [ $? -ne 0 ]; then
-    echo -e "${RED}[错误] 配置 API Key 失败${NC}"
+    echo -e "${RED}[错误] 配置 TigerAPI 失败${NC}"
     exit 1
 fi
-echo -e "${GREEN}[√] API Key 配置完成${NC}"
+echo -e "${GREEN}[√] TigerAPI 配置完成${NC}"
 
 # 更新 settings.json
 echo -e "${BLUE}[*] 更新 Claude Code 配置...${NC}"
@@ -203,7 +215,8 @@ echo -e "${GREEN}  配置完成！${NC}"
 echo "========================================"
 echo
 echo "配置详情:"
-echo "  - API Key: ${API_KEY:0:20}..."
+echo "  - API URL: $TIGER_URL"
+echo "  - 用户名: $TIGER_USER"
 echo "  - 状态栏脚本: $CLAUDE_DIR/status-final.py"
 echo "  - 启动脚本: $RUN_SCRIPT"
 echo "  - 配置文件: $SETTINGS_FILE"

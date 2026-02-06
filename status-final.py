@@ -1,12 +1,11 @@
 # ================================
 # 配置区域 - 请修改下面的配置为你自己的
 # ================================
-# Cubence API 配置 (必需 - 用于获取订阅配额信息)
-CUBENCE_API_KEY = "your-cubence-api-key-here"
-
-# XiaoAi API 配置 (可选 - 旧版功能，当前未使用)
-# XIAOAI_EMAIL = "your-email@example.com"
-# XIAOAI_PASSWORD = "your-password-here"
+# TigerAPI 配置
+TIGER_API_URL = "https://your-tiger-api-url.com"
+TIGER_USERNAME = "your-username"
+TIGER_PASSWORD = "your-password"
+TIGER_QUOTA_PER_UNIT = 500000  # 配额单位换算值：原始quota / 此值 = 美元余额
 
 import json
 import os
@@ -139,6 +138,146 @@ def login_xiaoai():
                 except:
                     pass
                 return token
+    except:
+        pass
+    return None
+
+@safe_execute(None)
+def login_tiger():
+    """登录 TigerAPI 获取 session cookie"""
+    try:
+        session = requests.Session()
+        response = session.post(
+            f'{TIGER_API_URL}/api/user/login',
+            headers={
+                'accept': 'application/json, text/plain, */*',
+                'content-type': 'application/json',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            json={
+                'username': TIGER_USERNAME,
+                'password': TIGER_PASSWORD
+            },
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success'):
+                user_id = data.get('data', {}).get('id')
+                # 获取 session cookie
+                session_cookie = session.cookies.get('session')
+                if session_cookie and user_id:
+                    # 缓存 session 和 user_id 到文件
+                    cache_file = os.path.expanduser('~/.claude/.tiger_session')
+                    try:
+                        with open(cache_file, 'w') as f:
+                            json.dump({
+                                'session': session_cookie,
+                                'user_id': user_id,
+                                'timestamp': time.time()
+                            }, f)
+                    except:
+                        pass
+                    return {'session': session_cookie, 'user_id': user_id}
+    except:
+        pass
+    return None
+
+@safe_execute(None)
+def get_cached_tiger_session():
+    """获取缓存的 TigerAPI session"""
+    cache_file = os.path.expanduser('~/.claude/.tiger_session')
+    try:
+        if os.path.exists(cache_file):
+            # 检查缓存文件是否在20小时内
+            if time.time() - os.path.getmtime(cache_file) < 72000:  # 20小时
+                with open(cache_file, 'r') as f:
+                    return json.load(f)
+    except:
+        pass
+    return None
+
+@safe_execute(None)
+def get_tiger_balance():
+    """获取 TigerAPI 余额信息"""
+    try:
+        # 先尝试使用缓存的 session
+        cached = get_cached_tiger_session()
+
+        # 如果没有缓存或缓存过期，重新登录
+        if not cached:
+            cached = login_tiger()
+            if not cached:
+                return None
+
+        session_cookie = cached.get('session')
+        user_id = cached.get('user_id')
+
+        response = requests.get(
+            f'{TIGER_API_URL}/api/user/self',
+            headers={
+                'accept': 'application/json, text/plain, */*',
+                'new-api-user': str(user_id),
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            cookies={'session': session_cookie},
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success'):
+                user_data = data.get('data', {})
+                quota = user_data.get('quota', 0)
+                used_quota = user_data.get('used_quota', 0)
+                # 转换为美元 (quota / quota_per_unit)
+                balance_usd = quota / TIGER_QUOTA_PER_UNIT
+                used_usd = used_quota / TIGER_QUOTA_PER_UNIT
+                return {
+                    'balance': balance_usd,
+                    'used': used_usd,
+                    'raw_quota': quota,
+                    'raw_used': used_quota
+                }
+
+        # 如果请求失败，可能 session 过期，删除缓存并重试
+        if response.status_code == 401 or (response.status_code == 200 and not response.json().get('success')):
+            cache_file = os.path.expanduser('~/.claude/.tiger_session')
+            try:
+                if os.path.exists(cache_file):
+                    os.remove(cache_file)
+            except:
+                pass
+
+            # 重新登录再试一次
+            cached = login_tiger()
+            if cached:
+                response = requests.get(
+                    f'{TIGER_API_URL}/api/user/self',
+                    headers={
+                        'accept': 'application/json, text/plain, */*',
+                        'new-api-user': str(cached.get('user_id')),
+                        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    },
+                    cookies={'session': cached.get('session')},
+                    timeout=5
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('success'):
+                        user_data = data.get('data', {})
+                        quota = user_data.get('quota', 0)
+                        used_quota = user_data.get('used_quota', 0)
+                        balance_usd = quota / TIGER_QUOTA_PER_UNIT
+                        used_usd = used_quota / TIGER_QUOTA_PER_UNIT
+                        return {
+                            'balance': balance_usd,
+                            'used': used_usd,
+                            'raw_quota': quota,
+                            'raw_used': used_quota
+                        }
     except:
         pass
     return None
@@ -336,6 +475,26 @@ def format_total_cost_display(api_data):
     )
 
     return five_part + " " + week_part
+
+@safe_execute("💰N/A")
+def format_tiger_balance_display(tiger_data):
+    """格式化 TigerAPI 余额显示"""
+    if not tiger_data:
+        return colorize("🐯", Colors.YELLOW) + colorize("N/A", Colors.RED)
+
+    balance = tiger_data.get('balance', 0)
+
+    # 格式化余额显示
+    if balance >= 1000:
+        balance_str = f"${balance/1000:.2f}k"
+    else:
+        balance_str = f"${balance:.2f}"
+
+    return (
+        colorize("🐯", Colors.BRIGHT_GREEN) +
+        colorize("Tiger:", Colors.BRIGHT_CYAN) +
+        colorize(balance_str, Colors.BRIGHT_GREEN, bold=True)
+    )
 
 @safe_execute('🤖unknown')
 def get_model_info():
@@ -1323,8 +1482,8 @@ def get_shell_and_mcp_status():
 def main():
     """主函数"""
     try:
-        # 获取API统计数据（带计时）
-        api_data = get_claude_api_stats_with_timing()
+        # 获取 TigerAPI 余额（替换原来的 Cubence API）
+        tiger_data = get_tiger_balance()
 
         # 美化的分隔符 - 使用原始的"┃"符号并添加亮色
         separator = " " + colorize("┃", Colors.BRIGHT_CYAN) + " "
@@ -1335,8 +1494,8 @@ def main():
         project_cost = get_project_cost()
         project_time = get_project_time()
 
-        # 账户余额显示
-        account_info = format_total_cost_display(api_data)
+        # TigerAPI 余额显示（替换原来的 Cubence 配额）
+        account_info = format_tiger_balance_display(tiger_data)
 
         # 当前时间
         current_time = get_current_time()
@@ -1356,7 +1515,7 @@ def main():
 
         # 按新格式组织信息
         parts = [
-            account_info,                           # 账户配额（5h + 周）
+            account_info,                           # TigerAPI 余额
             get_model_info(),                       # 模型
             git_info,                               # git信息（分支+修改数+代码行数+落后分支）
             get_context_display(),                  # 上下文
@@ -1370,7 +1529,7 @@ def main():
     except Exception:
         # 美化的错误回退显示
         fallback_parts = [
-            colorize("💰", Colors.GREEN) + colorize("5h:", Colors.BRIGHT_CYAN) + colorize("N/A", Colors.RED) + colorize("/", Colors.BRIGHT_CYAN) + colorize("N/A", Colors.CYAN) + " " + colorize("周:", Colors.BRIGHT_MAGENTA) + colorize("N/A", Colors.RED) + colorize("/", Colors.BRIGHT_CYAN) + colorize("N/A", Colors.CYAN),
+            colorize("🐯", Colors.YELLOW) + colorize("Tiger:", Colors.BRIGHT_CYAN) + colorize("N/A", Colors.RED),
             colorize("🤖", Colors.BLUE) + colorize("unknown", Colors.WHITE),
             colorize("📂", Colors.DIM) + colorize("no-git", Colors.DIM),
             colorize("🧠", Colors.GREEN) + colorize("0k", Colors.GREEN) + colorize("/", Colors.BRIGHT_CYAN) + colorize("200k", Colors.CYAN) + colorize("(0%)", Colors.GREEN),

@@ -4,8 +4,7 @@
 
 ## 功能特性
 
-- 💰 **订阅配额监控**：实时显示5小时窗口和周窗口的使用情况
-- 📊 **可视化进度条**：直观的使用率进度条，带重置时间倒计时
+- 💰 **TigerAPI 余额监控**：实时显示 TigerAPI 账户余额
 - 🤖 **模型信息显示**：当前使用的模型（Opus/Sonnet/Haiku）带专属图标
 - 📁 **项目统计**：当前项目的总Token消耗、费用、工作时间
 - 🔄 **Git 仓库状态**：分支名、修改文件数等
@@ -16,7 +15,7 @@
 ## 状态栏预览
 
 ```
-💰5h:██████░░░░60.0%(↻3h45m) 周:████░░░░░░40.0%(↻5d12h) ┃ ✨Opus 4.5 ┃ 🌿main(3) ┃ 🧠45k/200k(22%) ┃ 📁my-project:1.2M($18.50) ⏱️ 5.2h 🕐14:30
+🐯Tiger:$123.45 ┃ ✨Opus 4.5 ┃ 🌿main(3) ┃ 🧠45k/200k(22%) ┃ 📁my-project:1.2M($18.50) ⏱️ 5.2h 🕐14:30
 ```
 
 ## 快速开始
@@ -63,24 +62,27 @@ chmod +x setup.sh
 
 ## 配置说明
 
-本项目支持 **Cubence API**，用于获取订阅配额信息。
+本项目支持 **TigerAPI**，用于获取账户余额信息。
 
 ### 配置步骤
 
 编辑 `~/.claude/status-final.py`，修改顶部的配置信息：
 
 ```python
-# Cubence API 配置（从 https://cubence.com 获取）
-CUBENCE_API_KEY = "sk-user-your-api-key-here"
+# TigerAPI 配置
+TIGER_API_URL = "https://your-tiger-api-url.com"
+TIGER_USERNAME = "your-username"
+TIGER_PASSWORD = "your-password"
+TIGER_QUOTA_PER_UNIT = 500000
 ```
 
-将 `sk-user-your-api-key-here` 替换为你的 Cubence API Key。
+按照实际的 TigerAPI 账户信息填写上述配置。
 
-### 获取 API Key
+### 获取 TigerAPI 账户信息
 
-1. 访问 [Cubence](https://cubence.com)
+1. 访问 TigerAPI 管理平台
 2. 登录你的账号
-3. 在账户设置中获取 API Key
+3. 获取 API URL、用户名和密码
 
 ## 手动安装
 
@@ -99,12 +101,15 @@ copy run-status.bat %USERPROFILE%\.claude\
 cp status-final.py ~/.claude/
 ```
 
-### 2. 配置 API Key
+### 2. 配置 TigerAPI
 
 编辑 `~/.claude/status-final.py`，修改顶部的配置：
 
 ```python
-CUBENCE_API_KEY = "sk-user-your-api-key-here"
+TIGER_API_URL = "https://your-tiger-api-url.com"
+TIGER_USERNAME = "your-username"
+TIGER_PASSWORD = "your-password"
+TIGER_QUOTA_PER_UNIT = 500000
 ```
 
 ### 3. 安装依赖
@@ -165,7 +170,7 @@ chmod +x ~/.claude/run-status.sh
 
 | 模块 | 说明 | 示例 |
 |------|------|------|
-| **配额信息** | 5小时窗口 + 周窗口使用率 | `💰5h:██░░60%(↻3h) 周:██░░40%(↻5d)` |
+| **配额信息** | TigerAPI 账户余额 | `🐯Tiger:$123.45` |
 | **模型** | 当前使用的 AI 模型 | `✨Opus 4.5` / `⚡Sonnet` / `🍃Haiku` |
 | **Git** | Git 仓库信息 | `🌿main(3)` |
 | **上下文** | 当前会话上下文使用量 | `🧠45k/200k(22%)` |
@@ -173,10 +178,10 @@ chmod +x ~/.claude/run-status.sh
 
 ### 颜色含义
 
-#### 配额使用率
-- 绿色/白色：0-40%（安全）
-- 黄色：40-80%（警告）
-- 红色：80%以上（危险）
+#### TigerAPI 余额
+- 绿色：余额充足（> $50）
+- 黄色：余额偏低（$10 - $50）
+- 红色：余额不足（< $10）
 
 #### 上下文使用率
 - 绿色：0-30%（轻松）
@@ -201,9 +206,9 @@ chmod +x ~/.claude/run-status.sh
 ### Q: 配额信息显示"获取失败"？
 
 请确认：
-1. API Key 配置正确
+1. TigerAPI 配置信息正确（URL、用户名、密码）
 2. 网络连接正常
-3. Cubence 服务可访问
+3. TigerAPI 服务可访问
 
 ### Q: 上下文显示"ERR"？
 
@@ -222,6 +227,12 @@ chmod +x ~/.claude/run-status.sh
 3. 重启 Claude Code
 
 ## 更新日志
+
+### v3.0.0 (2025-02)
+- 新增：迁移至 TigerAPI，显示账户余额
+- 新增：余额颜色分级提示（绿/黄/红）
+- 移除：Cubence API 支持
+- 移除：5小时+周窗口配额进度条
 
 ### v2.0.0 (2024-12)
 - 新增：Cubence API 支持，5小时+周窗口配额显示
