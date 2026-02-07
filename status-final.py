@@ -201,6 +201,7 @@ def get_cached_tiger_session():
 @safe_execute(None)
 def get_tiger_balance():
     """获取 TigerAPI 余额信息"""
+    global _api_response_time
     try:
         # 先尝试使用缓存的 session
         cached = get_cached_tiger_session()
@@ -214,6 +215,7 @@ def get_tiger_balance():
         session_cookie = cached.get('session')
         user_id = cached.get('user_id')
 
+        start_time = time.time()
         response = requests.get(
             f'{TIGER_API_URL}/api/user/self',
             headers={
@@ -224,6 +226,9 @@ def get_tiger_balance():
             cookies={'session': session_cookie},
             timeout=5
         )
+
+        end_time = time.time()
+        _api_response_time = int((end_time - start_time) * 1000)
 
         if response.status_code == 200:
             data = response.json()
@@ -1424,11 +1429,8 @@ def get_today_code_lines():
         return colorize("📝", Colors.DIM) + colorize("+0-0", Colors.DIM)
 
 @safe_execute("")
-def get_shell_and_mcp_status():
-    """获取后台Shell数量和MCP连接状态"""
-    result_parts = []
-
-    # === 后台 Shell 数量 ===
+def get_shell_status():
+    """获取后台Shell数量"""
     # 尝试从 Claude Code 的数据中获取
     shell_count = 0
     if claude_input and claude_input.get('background_shells'):
@@ -1441,43 +1443,12 @@ def get_shell_and_mcp_status():
             shell_color = Colors.YELLOW
         else:
             shell_color = Colors.GREEN
-        result_parts.append(
+        return (
             colorize("⚙️", Colors.BRIGHT_CYAN) +
             colorize(str(shell_count), shell_color, bold=True)
         )
 
-    # === MCP 连接状态 ===
-    # 从 ~/.claude.json 读取 MCP 配置
-    mcp_total = 0
-    mcp_connected = 0
-
-    try:
-        claude_config_path = os.path.expanduser('~/.claude.json')
-        if os.path.exists(claude_config_path):
-            with open(claude_config_path, 'r', encoding='utf-8') as f:
-                claude_config = json.load(f)
-
-            mcp_servers = claude_config.get('mcpServers', {})
-            mcp_total = len(mcp_servers)
-            # 假设配置了就是连接的（实际状态难以获取）
-            mcp_connected = mcp_total
-    except:
-        pass
-
-    if mcp_total > 0:
-        if mcp_connected == mcp_total:
-            mcp_color = Colors.GREEN
-        elif mcp_connected > 0:
-            mcp_color = Colors.YELLOW
-        else:
-            mcp_color = Colors.RED
-
-        result_parts.append(
-            colorize("🔌", Colors.BRIGHT_BLUE) +
-            colorize(f"{mcp_connected}/{mcp_total}", mcp_color, bold=True)
-        )
-
-    return " ".join(result_parts) if result_parts else ""
+    return ""
 
 def main():
     """主函数"""
@@ -1503,11 +1474,11 @@ def main():
         # Git信息（已整合：分支+修改数+今日代码行数+落后最新分支）
         git_info = get_git_info()
 
-        # 新功能：会话消息轮数 + API响应时间 + Shell/MCP状态（合并为一个部分，不用竖线分隔）
+        # 新功能：会话消息轮数 + API响应时间 + Shell状态（合并为一个部分，不用竖线分隔）
         session_parts = [get_session_message_count(), get_api_response_time()]
-        shell_mcp = get_shell_and_mcp_status()
-        if shell_mcp:
-            session_parts.append(shell_mcp)
+        shell_status = get_shell_status()
+        if shell_status:
+            session_parts.append(shell_status)
         session_info = " ".join(session_parts)
 
         # 格式：Administrator:2.9M($42.63) ⏱️ 2.5h 🕐20:49
